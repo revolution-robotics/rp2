@@ -1,0 +1,197 @@
+#!/usr/bin/env bash
+#
+# @(#) ttyusb
+#
+# Given a number, this script attempts to open an associated USB
+# serial device (typically a console) in screen. If no device number
+# is provided, a default device number is used.
+#
+: ${ED_CMD:='@ED_CMD@'}
+: ${GREP_CMD:='@GREP_CMD@'}
+: ${LS_CMD:='@LS_CMD@'}
+: ${PS_CMD:='@PS_CMD@'}
+: ${SCREEN_CMD:='@SCREEN_CMD@'}
+: ${SED_CMD:='@SED_CMD@'}
+: ${SORT_CMD:='@SORT_CMD@'}
+: ${SUDO_CMD:='@SUDO_CMD@'}
+
+# octal-digts: Return first non-zero digits of octal number of the
+#   form \nnn or \0nnn.
+octal-digits ()
+{
+    local backslashed_octal=$1
+
+    local saved_extglob=$(shopt -p extglob)
+
+    shopt -s extglob
+
+    local octal_digits=${backslashed_octal##\\*(0)}
+
+    $saved_extglob
+
+    if test ."$octal_digits" = .''; then
+        octal_digits=0
+    elif [[ ! ."$octal_digits" =~ ^\.([1-7]|[1-7][0-7]|[1-3][0-7][0-7])$  ]]; then
+       echo "${FUNCNAME[0]}: ${octal_digits}: Invalid octal number" >&2
+       return 1
+    fi
+
+    echo "$octal_digits"
+}
+
+# visual-ascii: Convert octal, \nnn, to visual ASCII, e.g.,
+#   \000 => C-@,
+#   \001 => C-a,
+#   etc.
+visual-ascii ()
+{
+    local backslashed_octal=$1
+
+    local -i index=0
+    local visual_ascii_table=( $(echo C-{@,{a..z},[,\\,],^,_}) )
+    visual_ascii_table+=( $(printf "$(printf '\\x%x ' {32..126})") )
+
+    index=0$(octal-digits "$backslashed_octal") || return $?
+
+    echo "${visual_ascii_table[index]}"
+}
+
+# get-screen-escape: Return escape character of screen program.
+get-screen-escape ()
+{
+    local screen_escape=$(
+        $ED_CMD -E -e '/^escape/s/.*\s+(\^.|\\[0-9]{1,3}).*/\1/p' ~/.screenrc || true
+          )
+
+    case "$screen_escape" in
+        \?)
+            screen_escape=C-a
+            ;;
+        ^?)
+            local control_char=${screen_escape#^}
+
+            control_char=${control_char:0:1}
+            screen_escape=C-${control_char,}
+            ;;
+        \\*)
+            if ! screen_escape=$(visual-ascii "$screen_escape"); then
+                echo "${FUNCNAME[0]}: ${screen_escape}: Invalid escape character" >&2
+                return 1
+            fi
+            ;;
+        *)
+            echo "${FUNCNAME[0]}: ${screen_escape}: Invalid escape character" >&2
+            return 1
+            ;;
+    esac
+
+    echo "$screen_escape"
+}
+
+# ttypico: Open first Pico TTY device with screen.
+ttypico ()
+{
+    local name=''
+    local devno=''
+
+    case "$OSTYPE" in
+        darwin*)
+            name=.usbmodem140
+            devno=${1:-1}
+            ;;
+        linux-gnu)
+            name=ACM
+            devno=${1:-0}
+    esac
+
+    ttyusb "$name" "$devno"
+}
+
+# ttyusb: Open first USB TTY device with screen.
+ttyusb ()
+{
+    local name=${1:-'USB'}
+    local devno=${2:-0}
+
+    local device=/dev/tty${name}${devno}
+    local -a devices=()
+    local -a attached=()
+
+    # Represent screen escape characters as per the man page, e.g.,
+    # <CTRL> + A is displayed as C-a.
+    local visual_screen_escape=C-a
+
+
+    devices=( $($LS_CMD -1 /dev/tty${name}*) ) || return $?
+    attached=(
+        $(
+            $PS_CMD -efwww |
+                $SED_CMD -ne '/.*screen.*tty${name}/s;.*\(/dev/tty${name}[0-9]*\).*;\1;p' |
+                $SORT_CMD
+        )
+    ) || return $?
+
+    # If all existing devices attached...
+    if test ."${devices[*]}" != .'' -a "${devices[*]}" = "${attached[*]}"; then
+        echo "${FUNCNAME[0]}: All devices already attached" >&2
+        return 2
+
+    # Otherwise, if requested device exists...
+    elif $GREP_CMD -q "^${device}$" <<<$(printf "%s\n" "${devices[@]}"); then
+
+        # ...and already attached to screen...
+        if test ."${attached[*]}" != .'' \
+                && $GREP_CMD -q "$device" <<<$(printf "%s\n" "${attached[@]}"); then
+            echo "${FUNCNAME[0]}: $device: Already attached" >&2
+            return 3
+        elif ! visual_screen_escape=$(get-screen-escape); then
+            return 1
+        else
+            echo "${FUNCNAME[0]}: $device: Attaching..." >&2
+            read -sn 1 -p "Press any key to continue, then exit with ${visual_screen_escape} followed by \\."
+            $SUDO_CMD $SCREEN_CMD $device 115200
+        fi
+
+    # Otherwise, if requested device doesn't exist...
+    else
+        local unattached=''
+
+        # If some devices attached...
+        if test ."${attached[*]}" != .''; then
+            for dev in "${devices[@]}"; do
+
+                # If some device is unattached...
+                if ! $GREP_CMD -q "^${dev}$" <<<$(printf "%s\n" "${attached[@]}"); then
+                    unattached=$dev
+                    break
+                fi
+            done
+
+        # Otherwise, if all devices unattached...
+        else
+
+            # Pick any device...
+            for dev in "${devices[@]}"; do
+                unattached=$dev
+                break
+            done
+        fi
+
+        if ! visual_screen_escape=$(get-screen-escape); then
+            return 1
+        elif test ."$unattached" = .''; then
+            echo "${FUNCNAME[0]}: Unattached device not found" >&2
+            return 4
+        fi
+
+        echo "${FUNCNAME[0]}: $unattached: Attaching..." >&2
+        read -sn 1 -p "Press any key to continue, then exit with ${visual_screen_escape} followed by \\."
+        $SUDO_CMD $SCREEN_CMD "$unattached" 115200
+    fi
+}
+
+if test ."$0" = ."${BASH_SOURCE[0]}"; then
+    declare script_name=${0##*/}
+
+    $script_name "$@"
+fi

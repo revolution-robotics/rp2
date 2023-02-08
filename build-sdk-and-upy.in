@@ -1,0 +1,305 @@
+#!/usr/bin/env bash
+#
+# @(#) install-pico-sdk
+#
+# Given a base directory, basedir, and Raspberry Pi Pico board type,
+# e.g., PICO or PICO_W, this script clones and builds Raspberry Pi
+# Pico and MicroPython software repositories under basedir per
+# [Getting started with Raspberry Pi Pico](https://datasheets.raspberrypi.com/pico/getting-started-with-pico.pdf).
+#
+: ${APT_CMD:='@APT_CMD@'}
+: ${CAT_CMD:='@CAT_CMD@'}
+: ${CMAKE_CMD:='@CMAKE_CMD@'}
+: ${GIT_CMD:='@GIT_CMD@'}
+: ${ID_CMD:='@ID_CMD@'}
+: ${INSTALL_CMD:='@INSTALL_CMD@'}
+: ${MAKE_CMD:='@MAKE_CMD@'}
+: ${NPROC_CMD:='@NPROC_CMD@'}
+: ${PORT_CMD:='@PORT_CMD@'}
+: ${SUDO_CMD:='@SUDO_CMD@'}
+
+install-prerequisites ()
+{
+    local -n params=$1
+
+    local -a git_deps=(
+        git
+        git-lfs
+    )
+    local -a sdk_deps=(
+        cmake
+    )
+    local -a openocd_deps=(
+        automake
+        autoconf
+        texinfo
+        libtool
+    )
+
+    echo "*** Installing prerequisites for Pico SDK and MicroPython" >&2
+
+    $SUDO_CMD $INSTALL_CMD -d -m 0755 -o "$($ID_CMD -un)" -g "$($ID_CMD -gn)" \
+              "${params[pico-basedir]}" || return $?
+
+    case "$OSTYPE" in
+        linux-gnu)
+            sdk_deps+=(
+                g++
+                gcc
+                gcc-arm-none-eabi
+                libstdc++-arm-none-eabi-newlib
+            )
+            openocd_deps+=(
+                gdb-multiarch
+                gpiod
+                build-essential
+                libftdi-dev
+                libgpiod-dev
+                libusb-1.0-0-dev
+            )
+            micropython_deps+=(
+                libnewlib-arm-none-eabi
+            )
+            $SUDO_CMD $APT_CMD update || return $?
+            $SUDO_CMD $APT_CMD -y install "${git_deps[@]}" "${sdk_deps[@]}" \
+                 "${openocd_deps[@]}" || return $?
+            ;;
+        darwin*)
+            sdk_deps+=(
+                arm-none-eabi-gcc
+                gcc12
+            )
+            openocd_deps+=(
+                libftdi1
+                libusb
+            )
+            $SUDO_CMD $PORT_CMD -N install "${git_deps[@]}" "${sdk_deps[@]}" \
+                 "${openocd_deps[@]}" || return $?
+            ;;
+        *)
+            echo "${script_name}: Unsupported platform" >&2
+            return 1
+            ;;
+    esac
+
+    export PICO_BOARD=${params[pico-board],,} \
+           PICO_BASEDIR=${params[pico-basedir]} \
+           PICO_SDK_PATH=${params[pico-basedir]}/pico-sdk \
+           PICO_EXAMPLES_PATH=${params[pico-basedir]}/pico-examples \
+           PICO_EXTRAS_PATH=${params[pico-basedir]}/pico-extras \
+           PICO_PLAYGROUND_PATH=${params[pico-basedir]}/pico-playground
+}
+
+clone-repositories ()
+{
+    local -n params=$1
+    local -n repos=$2
+
+    local branch=''
+    local base_url=''
+    local repo=''
+    local dest=''
+
+    for repo in "${repos[@]}"; do
+        branch=${params[default-branch]}
+
+        if [[ ."$repo" =~ ^\.(.+)\.(.+)/(.+)$ ]]; then
+            base_url=${BASH_REMATCH[1]}
+            repo=${BASH_REMATCH[2]}
+            branch=${BASH_REMATCH[3]}
+        elif [[ ."$repo" =~ ^\.(.+)\.(.+)$ ]]; then
+            base_url=${BASH_REMATCH[1]}
+            repo=${BASH_REMATCH[2]}
+        else
+            echo "${script_name}: ${repo}: Invalid repository format" >&2
+            return 1
+        fi
+
+        dest=${PICO_BASEDIR}/${repo}
+
+        if [ -d "$dest" ]; then
+            echo "${dest}: Directory already exists" >&2
+            $GIT_CMD -C "$dest" pull || return $?
+        else
+            local repo_url=${params[$base_url]}/${repo}
+
+            echo "*** Cloning ${repo_url} and any submodules" >&2
+            $GIT_CMD -C "$PICO_BASEDIR" clone -b "$branch" "$repo_url" 2>/dev/null \
+                || return $?
+            if test ."$repo" = .'micropython'; then
+                $MAKE_CMD -C "${dest}/ports/rp2" BOARD="${params[pico-board]}" submodules \
+                    || return $?
+            else
+                $GIT_CMD -C "$dest" submodule update --init || return $?
+            fi
+        fi
+    done
+}
+
+build-examples ()
+{
+    local -n examples=$1
+    local -n cmake_args=$2
+
+    local build_dir=${PICO_EXAMPLES_PATH}/build
+
+    $CMAKE_CMD -S "$PICO_EXAMPLES_PATH" -B "$build_dir" \
+               ${cmake_args[0]:+"${cmake_args[@]}"} || return $?
+
+    for example in "${examples[@]}"; do
+        echo "*** Building Pico example project: ${example}" >&2
+        $MAKE_CMD -C "${build_dir}/${example}" -j$(${NPROC_CMD:-sysctl -n hw.ncpu}) \
+                  || return $?
+    done
+}
+
+install-tools ()
+{
+    local -n pico_tools=$1
+
+    local tool=''
+    local source_dir=''
+    local build_dir=''
+
+    for tool in "${pico_tools[@]}"; do
+        source_dir=${PICO_BASEDIR}/${tool}
+        build_dir=${source_dir}/build
+
+        echo "*** Building Pico tool: ${tool}" >&2
+        $CMAKE_CMD -S "$source_dir"  -B "$build_dir" || return $?
+        $MAKE_CMD -C "$build_dir" -j$(${NPROC_CMD:-sysctl -n hw.ncpu}) || return $?
+    done
+
+    if test -f "${PICO_BASEDIR}/picotool/build/picotool"; then
+        $SUDO_CMD $INSTALL_CMD -m 0755 \
+                  "${PICO_BASEDIR}/picotool/build/picotool" \
+                  /usr/local/bin
+    fi
+}
+
+install-openocd ()
+{
+    declare status=''
+
+    echo "*** Building OpenOCD" >&2
+    pushd "${PICO_BASEDIR}/openocd"
+    ./bootstrap || { status=$?; popd; return "$status"; }
+    case "$OSTYPE" in
+        linux-gnu)
+            ./configure --enable-sysfsgpio --enable-bcm2835gpio \
+                        --enable-picoprobe \
+                || { status=$?; popd; return "$status"; }
+            ;;
+        darwin*)
+            ./configure --enable-bcm2835gpio --enable-picoprobe \
+                || { status=$?; popd; return "$status"; }
+            ;;
+    esac
+
+    $MAKE_CMD -j$(${NPROC_CMD:-sysctl -n hw.ncpu}) || { status=$?; popd; return "$status"; }
+    $SUDO_CMD $MAKE_CMD install || { status=$?; popd; return "$status"; }
+    popd
+}
+
+build-micropython ()
+{
+    local -n params=$1
+
+    local dest=${PICO_BASEDIR}/micropython
+
+    echo "*** Building MicroPython" >&2
+    pushd "${PICO_BASEDIR}/micropython"
+    $MAKE_CMD -j$(${NPROC_CMD:-sysctl -n hw.ncpu}) -C "${dest}/mpy-cross" BOARD="${params[pico-board]}" \
+              || return $?
+    $MAKE_CMD -j$(${NPROC_CMD:-sysctl -n hw.ncpu}) -C "${dest}/ports/rp2" BOARD="${params[pico-board]}" clean \
+              || return $?
+    $MAKE_CMD -j$(${NPROC_CMD:-sysctl -n hw.ncpu}) -C "${dest}/ports/rp2" BOARD="${params[pico-board]}" \
+              || return $?
+}
+
+clean-up ()
+{
+    local -n params=$1
+
+    $CAT_CMD <<EOF
+
+*** Please add the following to $(echo ~/.bashrc and ~/.bash_profile):
+
+################################################################
+declare pico_basedir=${params[pico-basedir]}
+
+if test -d "\$pico_basedir"; then
+    export PICO_BOARD=${params[pico-board],,} \\
+           PICO_BASEDIR=\$pico_basedir \\
+           PICO_SDK_PATH=\${pico_basedir}/pico-sdk \\
+           PICO_EXAMPLES_PATH=\${pico_basedir}/pico-examples \\
+           PICO_EXTRAS_PATH=\${pico_basedir}/pico-extras \\
+           PICO_PLAYGROUND_PATH=\${pico_basedir}/pico-playground
+fi
+################################################################
+EOF
+}
+
+if test ."$0" = ."${BASH_SOURCE[0]}"; then
+    declare script_name=${0##*/}
+
+    declare pico_basedir=${1:-"${HOME}/pico"}
+    declare pico_board=${2:-pico}
+
+    declare -A parameters=(
+        [rpi]=https://github.com/raspberrypi
+        [mpy]=https://github.com/micropython
+        [default-branch]=develop
+        [pico-board]=${pico_board^^}
+        [pico-basedir]=$pico_basedir
+    )
+
+    # For a given repository, the default branch may be overriden by
+    # appending to the name `/branch-name'.
+    declare -a repositories=(
+        rpi.pico-sdk
+        rpi.pico-examples
+        rpi.pico-extras/master
+        rpi.pico-playground/master
+        rpi.picoprobe/master
+        rpi.picotool
+        rpi.openocd/rp2040
+        mpy.micropython/master
+    )
+    declare -a cmake_parameters=(
+        -DCMAKE_BUILD_TYPE=Debug
+        -DPICO_BOARD="${pico_board,,}"
+    )
+    declare -a examples_list=(
+        blink
+        hello_world
+    )
+    declare tools_list=(
+        picoprobe
+        picotool
+    )
+
+    echo "Pico SDK base directory: ${pico_basedir}" >&2
+    echo "Pico board: ${pico_board}" >&2
+
+    if (( $# >= 1 )); then
+        read -n 1 -p 'Press any key to continue...'
+    else
+        cat >&2 <<EOF
+To override default base directory and/or board, use:
+
+    $0 desired-base-dir pico-board
+
+EOF
+        read -n 1 -p 'Otherwise, press any key to continue...'
+    fi
+    echo >&2
+
+    install-prerequisites parameters || exit $?
+    clone-repositories parameters repositories || exit $?
+    build-examples examples_list cmake_parameters || exit $?
+    install-tools tools_list || exit $?
+    install-openocd || exit $?
+    build-micropython parameters || exit $?
+    clean-up parameters || exit $?
+fi
