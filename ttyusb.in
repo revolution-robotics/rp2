@@ -148,7 +148,7 @@ ttyusb ()
             return 1
         else
             echo "${FUNCNAME[0]}: $device: Attaching..." >&2
-            read -sn 1 -p "Press any key to continue, then exit with ${visual_screen_escape} followed by \\."
+            read -sn 1 -p "Press any key to continue, then exit with \`${visual_screen_escape}' followed by \`\\'."
             $SUDO_CMD $SCREEN_CMD $device 115200
         fi
 

@@ -16,6 +16,7 @@
 : ${MAKE_CMD:='@MAKE_CMD@'}
 : ${NPROC_CMD:='@NPROC_CMD@'}
 : ${PORT_CMD:='@PORT_CMD@'}
+: ${SED_CMD:='@SED_CMD@'}
 : ${SUDO_CMD:='@SUDO_CMD@'}
 
 install-prerequisites ()
@@ -209,6 +210,10 @@ build-micropython ()
 
     echo "*** Building MicroPython" >&2
     pushd "${PICO_BASEDIR}/micropython"
+
+    # Enable REPL over UART.
+    $SED_CMD -i -e '/^#define MICROPY_HW_ENABLE_UART_REPL/s/0/1/' ports/rp2/mpconfigport.h
+
     $MAKE_CMD -j$(${NPROC_CMD:-sysctl -n hw.ncpu}) -C "${dest}/mpy-cross" BOARD="${params[pico-board]}" \
               || return $?
     $MAKE_CMD -j$(${NPROC_CMD:-sysctl -n hw.ncpu}) -C "${dest}/ports/rp2" BOARD="${params[pico-board]}" clean \
@@ -243,7 +248,7 @@ EOF
 if test ."$0" = ."${BASH_SOURCE[0]}"; then
     declare script_name=${0##*/}
 
-    declare pico_basedir=${1:-"${HOME}/pico"}
+    declare pico_basedir=${1:-"${PWD}/build"}
     declare pico_board=${2:-pico}
 
     declare -A parameters=(
