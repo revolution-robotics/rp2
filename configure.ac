@@ -11,11 +11,16 @@ AC_MSG_CHECKING([whether to extend PATH search])
 AC_ARG_WITH([opt-path],
   [AS_HELP_STRING([--with-opt-path=PATH],
     [extend PATH search @{:@default=/opt/local/sbin:/opt/local/bin@:}@])],
-    [OPT_PREFIX=],
-    [OPT_PREFIX=$with_opt_path$PATH_SEPARATOR])
-
-AS_IF([test ."$OPT_PREFIX" = .'' ],
-    [OPT_PREFIX=/opt/local/sbin:/opt/local/bin$PATH_SEPARATOR])
+    [],
+    [withval=check])
+AS_IF(
+  [test ."$withval" = .yes || test ."$withval" = .'check'],
+    [AS_IF(
+      [test -d /opt/local/bin],
+        [OPT_PREFIX=/opt/local/sbin:/opt/local/bin$PATH_SEPARATOR],
+      [test ! ."$withval" = .'no'],
+        [OPT_PREFIX=$withval$PATH_SEPARATOR])])
+AC_MSG_RESULT([${OPT_PREFIX:-no}])
 
 # Checks for programs.
 AC_PATH_PROG([APT_CMD],      [apt])
