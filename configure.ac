@@ -36,8 +36,12 @@ AC_PATH_PROGS([ID_CMD],      [gid id],           [], [$OPT_PREFIX$PATH])
 AC_PATH_PROGS([INSTALL_CMD], [ginstall install], [], [$OPT_PREFIX$PATH])
 AC_PATH_PROGS([LN_CMD],      [gln ln],           [], [$OPT_PREFIX$PATH])
 AC_PATH_PROGS([LS_CMD],      [gls ls],           [], [$OPT_PREFIX$PATH])
+
+AC_PATH_PROG([LSUSB_CMD],    [lsusb],            [], [$OPT_PREFIX$PATH])
+
 AC_PATH_PROGS([MAKE_CMD],    [gmake make],       [], [$OPT_PREFIX$PATH])
 
+AC_PATH_PROG([OPENOCD_CMD],  [openocd],          [], [$OPT_PREFIX$PATH])
 AC_PATH_PROG([PS_CMD],       [ps],               [], [$OPT_PREFIX$PATH])
 AC_PATH_PROG([NPROC_CMD],    [nproc],            [], [$OPT_PREFIX$PATH])
 AC_PATH_PROG([PORT_CMD],     [port],             [], [$OPT_PREFIX$PATH])
@@ -47,6 +51,7 @@ AC_PATH_PROGS([SED_CMD],     [gsed sed],         [], [$OPT_PREFIX$PATH])
 AC_PATH_PROGS([SORT_CMD],    [gsort sort],       [], [$OPT_PREFIX$PATH])
 
 AC_PATH_PROG([SUDO_CMD],     [sudo],             [], [$OPT_PREFIX$PATH])
+AC_PATH_PROG([TR_CMD],       [tr],               [], [$OPT_PREFIX$PATH])
 
 
 # Checks for libraries.
@@ -60,5 +65,6 @@ AC_PATH_PROG([SUDO_CMD],     [sudo],             [], [$OPT_PREFIX$PATH])
 AC_CONFIG_FILES([Makefile])
 AC_CONFIG_FILES([build-sdk-and-upy], [chmod +x build-sdk-and-upy])
 AC_CONFIG_FILES([ttyusb], [chmod +x ttyusb; ln -sf ttyusb ttypico])
+AC_CONFIG_FILES([openocd-picoprobe], [chmod +x openocd-picoprobe])
 
 AC_OUTPUT
