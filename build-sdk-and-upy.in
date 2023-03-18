@@ -36,6 +36,9 @@ install-prerequisites ()
         texinfo
         libtool
     )
+    local tty_deps=(
+        screen
+    )
 
     echo "*** Installing prerequisites for Pico SDK and MicroPython" >&2
 
@@ -63,7 +66,7 @@ install-prerequisites ()
             )
             $SUDO_CMD $APT_CMD update || return $?
             $SUDO_CMD $APT_CMD -y install "${git_deps[@]}" "${sdk_deps[@]}" \
-                 "${openocd_deps[@]}" || return $?
+                 "${openocd_deps[@]}" "${tty_deps[@]}" || return $?
             ;;
         darwin*)
             sdk_deps+=(
@@ -75,7 +78,7 @@ install-prerequisites ()
                 libusb
             )
             $SUDO_CMD $PORT_CMD -N install "${git_deps[@]}" "${sdk_deps[@]}" \
-                 "${openocd_deps[@]}" || return $?
+                 "${openocd_deps[@]}" "${tty_deps[@]}" || return $?
             ;;
         *)
             echo "${script_name}: Unsupported platform" >&2
