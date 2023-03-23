@@ -13,11 +13,21 @@
 
 debug-via-picoprobe ()
 {
-    local picoprobe_interface=$(
-        $LSUSB_CMD  |
-            $SED_CMD -nE -e '/^Bus.*ID 2e8a:/{s/.*\s(\S+)$/\1/p;q}' |
-            $TR_CMD A-Z a-z
-        )
+    local picoprobe_interface=''
+
+
+    case $OSTYPE in
+        linux-gnu)
+            picoprobe_interface=$(
+                $LSUSB_CMD  |
+                    $SED_CMD -nE -e '/^Bus.*ID 2e8a:/{s/.*\s(\S+)$/\1/p;q}' |
+                    $TR_CMD A-Z a-z
+                               ) || return $?
+            ;;
+        darwin)
+            picoprobe_interface=cmsis-dap
+            ;;
+    esac
 
     pushd ${PICO_BASEDIR}/openocd
     $OPENOCD_CMD -f "tcl/interface/${picoprobe_interface}.cfg" \

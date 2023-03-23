@@ -3,14 +3,19 @@
 # @(#) install-pico-sdk
 #
 # Given a base directory, basedir, and Raspberry Pi Pico board type,
-# e.g., PICO or PICO_W, this script clones and builds Raspberry Pi
+# e.g., `pico' or `pico_w', this script clones and builds Raspberry Pi
 # Pico and MicroPython software repositories under basedir per
-# [Getting started with Raspberry Pi Pico](https://datasheets.raspberrypi.com/pico/getting-started-with-pico.pdf).
+# "Getting started with Raspberry Pi Pico".*
+#
+# * https://datasheets.raspberrypi.com/pico/getting-started-with-pico.pdf
 #
 : ${APT_CMD:='@APT_CMD@'}
+: ${AUTOUPDATE_CMD:='@AUTOUPDATE_CMD@'}
 : ${CAT_CMD:='@CAT_CMD@'}
 : ${CMAKE_CMD:='@CMAKE_CMD@'}
+: ${DNF_CMD:='@DNF_CMD@'}
 : ${GIT_CMD:='@GIT_CMD@'}
+: ${GREP_CMD:='@GREP_CMD@'}
 : ${ID_CMD:='@ID_CMD@'}
 : ${INSTALL_CMD:='@INSTALL_CMD@'}
 : ${MAKE_CMD:='@MAKE_CMD@'}
@@ -18,6 +23,24 @@
 : ${PORT_CMD:='@PORT_CMD@'}
 : ${SED_CMD:='@SED_CMD@'}
 : ${SUDO_CMD:='@SUDO_CMD@'}
+
+install-libgpiod-tools ()
+{
+    local -n settings=$1
+
+    echo "*** Building GPIO library and tools" >&2
+    $INSTALL_CMD -d -m 0755 "${settings[pico-basedir]}" || return $?
+    $GIT_CMD -C "${settings[pico-basedir]}" clone "${settings[gpiod]}" || return $?
+
+    pushd "${settings[pico-basedir]}/libgpiod" || return $?
+    $AUTOUPDATE_CMD || return $?
+    $GIT_CMD commit -a --no-gpg-sign -m 'Run autoupdate.' || return $?
+    ./autogen.sh --enable-tools=yes || return $?
+    ./configure || return $?
+    $MAKE_CMD || return $?
+    $SUDO_CMD $MAKE_CMD install || return $?
+    popd
+}
 
 install-prerequisites ()
 {
@@ -35,38 +58,70 @@ install-prerequisites ()
         autoconf
         texinfo
         libtool
+        usbutils
     )
     local tty_deps=(
         screen
     )
 
     echo "*** Installing prerequisites for Pico SDK and MicroPython" >&2
-
     $SUDO_CMD $INSTALL_CMD -d -m 0755 -o "$($ID_CMD -un)" -g "$($ID_CMD -gn)" \
               "${params[pico-basedir]}" || return $?
 
     case "$OSTYPE" in
         linux-gnu)
-            sdk_deps+=(
-                g++
-                gcc
-                gcc-arm-none-eabi
-                libstdc++-arm-none-eabi-newlib
-            )
-            openocd_deps+=(
-                gdb-multiarch
-                gpiod
-                build-essential
-                libftdi-dev
-                libgpiod-dev
-                libusb-1.0-0-dev
-            )
-            micropython_deps+=(
-                libnewlib-arm-none-eabi
-            )
-            $SUDO_CMD $APT_CMD update || return $?
-            $SUDO_CMD $APT_CMD -y install "${git_deps[@]}" "${sdk_deps[@]}" \
-                 "${openocd_deps[@]}" "${tty_deps[@]}" || return $?
+            source /etc/os-release
+
+            case "$ID" in
+                ubuntu|debian)
+                    sdk_deps+=(
+                        g++
+                        gcc
+                        gcc-arm-none-eabi
+                        libstdc++-arm-none-eabi-newlib
+                    )
+                    openocd_deps+=(
+                        gdb-multiarch
+                        gpiod
+                        build-essential
+                        libftdi-dev
+                        libgpiod-dev
+                        libusb-1.0-0-dev
+                    )
+                    micropython_deps+=(
+                        libnewlib-arm-none-eabi
+                    )
+
+                    $SUDO_CMD $APT_CMD update || return $?
+                    $SUDO_CMD $APT_CMD -y install "${git_deps[@]}" \
+                              "${sdk_deps[@]}" "${openocd_deps[@]}" "${tty_deps[@]}" \
+                        || return $?
+                    ;;
+                fedora)
+                    sdk_deps+=(
+                        arm-none-eabi-binutils-cs
+                        arm-none-eabi-gcc-cs
+                        arm-none-eabi-gcc-cs-c++
+                    )
+                    openocd_deps+=(
+                        autoconf-archive
+                        gdb
+                        libftdi-devel
+                        libusb1-devel
+                    )
+                    micropython_deps+=(
+                        arm-none-eabi-newlib
+                    )
+
+
+                    $SUDO_CMD $DNF_CMD -y group install \
+                              'C Development Tools and Libraries' || return $?
+                    $SUDO_CMD $DNF_CMD -y install "${git_deps[@]}" \
+                              "${sdk_deps[@]}" "${openocd_deps[@]}" \
+                              "${tty_deps[@]}" || return $?
+                    install-libgpiod-tools params
+                    ;;
+            esac
             ;;
         darwin*)
             sdk_deps+=(
@@ -128,10 +183,11 @@ clone-repositories ()
             local repo_url=${params[$base_url]}/${repo}
 
             echo "*** Cloning ${repo_url} and any submodules" >&2
-            $GIT_CMD -C "$PICO_BASEDIR" clone -b "$branch" "$repo_url" 2>/dev/null \
-                || return $?
+            $GIT_CMD -C "$PICO_BASEDIR" clone -b "$branch" \
+                     "$repo_url" 2>/dev/null || return $?
             if test ."$repo" = .'micropython'; then
-                $MAKE_CMD -C "${dest}/ports/rp2" BOARD="${params[pico-board]}" submodules \
+                $MAKE_CMD -C "${dest}/ports/rp2" \
+                          BOARD="${params[pico-board]}" submodules \
                     || return $?
             else
                 $GIT_CMD -C "$dest" submodule update --init || return $?
@@ -152,8 +208,9 @@ build-examples ()
 
     for example in "${examples[@]}"; do
         echo "*** Building Pico example project: ${example}" >&2
-        $MAKE_CMD -C "${build_dir}/${example}" -j$(${NPROC_CMD:-sysctl -n hw.ncpu}) \
-                  || return $?
+        $MAKE_CMD -C "${build_dir}/${example}" \
+                  -j$(${NPROC_CMD:-sysctl -n hw.ncpu}) \
+            || return $?
     done
 }
 
@@ -171,14 +228,13 @@ install-tools ()
 
         echo "*** Building Pico tool: ${tool}" >&2
         $CMAKE_CMD -S "$source_dir"  -B "$build_dir" || return $?
-        $MAKE_CMD -C "$build_dir" -j$(${NPROC_CMD:-sysctl -n hw.ncpu}) || return $?
-    done
+        $MAKE_CMD -C "$build_dir" -j$(${NPROC_CMD:-sysctl -n hw.ncpu}) \
+            || return $?
 
-    if test -f "${PICO_BASEDIR}/picotool/build/picotool"; then
-        $SUDO_CMD $INSTALL_CMD -m 0755 \
-                  "${PICO_BASEDIR}/picotool/build/picotool" \
-                  /usr/local/bin
-    fi
+        if test ."$tool" = .'picotool'; then
+            $SUDO_CMD $MAKE_CMD -C "$build_dir" install
+        fi
+    done
 }
 
 install-openocd ()
@@ -195,12 +251,13 @@ install-openocd ()
                 || { status=$?; popd; return "$status"; }
             ;;
         darwin*)
-            ./configure --enable-bcm2835gpio --enable-picoprobe \
+            ./configure --enable-picoprobe \
                 || { status=$?; popd; return "$status"; }
             ;;
     esac
 
-    $MAKE_CMD -j$(${NPROC_CMD:-sysctl -n hw.ncpu}) || { status=$?; popd; return "$status"; }
+    $MAKE_CMD -j$(${NPROC_CMD:-sysctl -n hw.ncpu}) \
+        || { status=$?; popd; return "$status"; }
     $SUDO_CMD $MAKE_CMD install || { status=$?; popd; return "$status"; }
     popd
 }
@@ -214,15 +271,28 @@ build-micropython ()
     echo "*** Building MicroPython" >&2
     pushd "${PICO_BASEDIR}/micropython"
 
-    # Enable REPL over UART.
-    $SED_CMD -i -e '/^#define MICROPY_HW_ENABLE_UART_REPL/s/0/1/' ports/rp2/mpconfigport.h
+    local mpconfigport_h=ports/rp2/mpconfigport.h
 
-    $MAKE_CMD -j$(${NPROC_CMD:-sysctl -n hw.ncpu}) -C "${dest}/mpy-cross" BOARD="${params[pico-board]}" \
-              || return $?
-    $MAKE_CMD -j$(${NPROC_CMD:-sysctl -n hw.ncpu}) -C "${dest}/ports/rp2" BOARD="${params[pico-board]}" clean \
-              || return $?
-    $MAKE_CMD -j$(${NPROC_CMD:-sysctl -n hw.ncpu}) -C "${dest}/ports/rp2" BOARD="${params[pico-board]}" \
-              || return $?
+    if $GREP_CMD '^#define MICROPY_HW_ENABLE_UART_REPL' "$mpconfigport_h" \
+            | $GREP_CMD -q 0; then
+
+        # Enable REPL over UART.
+        $SED_CMD -i -e '/^#define MICROPY_HW_ENABLE_UART_REPL/s/0/1/' \
+                 "$mpconfigport_h" || { status=$?; popd; return "$status"; }
+        $GIT_CMD commit -a --no-gpg-sign -m 'Enable UART REPL.' \
+            || { status=$?; popd; return "$status"; }
+    fi
+
+    $MAKE_CMD -j$(${NPROC_CMD:-sysctl -n hw.ncpu}) -C "${dest}/mpy-cross" \
+              BOARD="${params[pico-board]}" \
+        || { status=$?; popd; return "$status"; }
+    $MAKE_CMD -j$(${NPROC_CMD:-sysctl -n hw.ncpu}) -C "${dest}/ports/rp2" \
+              BOARD="${params[pico-board]}" clean \
+        || { status=$?; popd; return "$status"; }
+    $MAKE_CMD -j$(${NPROC_CMD:-sysctl -n hw.ncpu}) -C "${dest}/ports/rp2" \
+              BOARD="${params[pico-board]}" \
+        || { status=$?; popd; return "$status"; }
+    popd
 }
 
 clean-up ()
@@ -257,6 +327,7 @@ if test ."$0" = ."${BASH_SOURCE[0]}"; then
     declare -A parameters=(
         [rpi]=https://github.com/raspberrypi
         [mpy]=https://github.com/micropython
+        [gpiod]=https://git.kernel.org/pub/scm/libs/libgpiod/libgpiod.git
         [default-branch]=develop
         [pico-board]=${pico_board^^}
         [pico-basedir]=$pico_basedir

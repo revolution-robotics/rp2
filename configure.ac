@@ -7,27 +7,33 @@ AM_INIT_AUTOMAKE([foreign])
 
 LOCAL_PREFIX=/usr/local/sbin:/usr/local/bin$PATH_SEPARATOR
 
-AC_MSG_CHECKING([whether to extend PATH search])
+AC_MSG_CHECKING([whether to search optional path])
 AC_ARG_WITH([opt-path],
-  [AS_HELP_STRING([--with-opt-path=PATH],
-    [extend PATH search @{:@default=/opt/local/sbin:/opt/local/bin@:}@])],
-    [],
-    [withval=check])
-AS_IF(
-  [test ."$withval" = .yes || test ."$withval" = .'check'],
-    [AS_IF(
-      [test -d /opt/local/bin],
-        [OPT_PREFIX=/opt/local/sbin:/opt/local/bin$PATH_SEPARATOR],
-      [test ! ."$withval" = .'no'],
-        [OPT_PREFIX=$withval$PATH_SEPARATOR])])
+  [AS_HELP_STRING([--with-opt-path@<:@=PATH@:>@],
+    [search optional PATH @{:@default: /opt/local/bin@:}@])],
+  [], [with_opt_path=check])
+if test ."$with_opt_path" = .'yes' || test ."$with_opt_path" = .'check'; then
+    if test -d /opt/local/bin; then
+        OPT_PREFIX=/opt/local/sbin${PATH_SEPARATOR}/opt/local/bin
+    fi
+elif test ! ."$with_opt_path" = .'no'; then
+    if test -d "$with_opt_path"; then
+        OPT_PREFIX=${with_opt_path}
+    else
+        AC_MSG_WARN([${with_opt_path}: No such file or directory])
+    fi
+fi
 AC_MSG_RESULT([${OPT_PREFIX:-no}])
+OPT_PREFIX=${OPT_PREFIX:+"${OPT_PREFIX}${PATH_SEPARATOR}"}
 
 # Checks for programs.
 AC_PATH_PROG([APT_CMD],      [apt])
+AC_PATH_PROG([AUTOUPDATE_CMD],      [autoupdate])
 
 AC_PATH_PROGS([CAT_CMD],     [gcat cat],         [], [$OPT_PREFIX$PATH])
 
 AC_PATH_PROG([CMAKE_CMD],    [cmake],            [], [$OPT_PREFIX$PATH])
+AC_PATH_PROG([DNF_CMD],      [dnf],              [], [$LOCAL_PREFIX$PATH])
 AC_PATH_PROG([ED_CMD],       [ed],               [], [$LOCAL_PREFIX$PATH])
 AC_PATH_PROG([GIT_CMD],      [git],              [], [$OPT_PREFIX$PATH])
 
