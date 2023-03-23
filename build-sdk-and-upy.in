@@ -14,6 +14,7 @@
 : ${CAT_CMD:='@CAT_CMD@'}
 : ${CMAKE_CMD:='@CMAKE_CMD@'}
 : ${DNF_CMD:='@DNF_CMD@'}
+: ${ED_CMD:='@ED_CMD@'}
 : ${GIT_CMD:='@GIT_CMD@'}
 : ${GREP_CMD:='@GREP_CMD@'}
 : ${ID_CMD:='@ID_CMD@'}
@@ -23,6 +24,7 @@
 : ${PORT_CMD:='@PORT_CMD@'}
 : ${SED_CMD:='@SED_CMD@'}
 : ${SUDO_CMD:='@SUDO_CMD@'}
+: ${UDEVADM_CMD:='@UDEVADM_CMD@'}
 
 install-libgpiod-tools ()
 {
@@ -262,6 +264,30 @@ install-openocd ()
     popd
 }
 
+install-openocd-udev-rules ()
+{
+    local udev_rules=60-openocd.rules
+
+    if test ! -x "$UDEVADM_CMD" \
+            || test -f "/etc/udev/rules.d/${udev_rules}"; then
+        return 0
+    fi
+
+    echo "*** Installing OpenOCD udev rules" >&2
+    pushd "${PICO_BASEDIR}/openocd"
+
+    $SUDO_CMD $ED_CMD "contrib/${udev_rules}" <<EOF || return $?
+g/, GROUP="plugdev"/s///
+/{idVendor}=="2e8a"/t
+s/0004/000c/
+wq /etc/udev/rules.d/${udev_rules}
+EOF
+    popd
+
+    $SUDO_CMD $UDEVADM_CMD control --reload-rules \
+        && $SUDO_CMD $UDEVADM_CMD trigger
+}
+
 build-micropython ()
 {
     local -n params=$1
@@ -295,16 +321,50 @@ build-micropython ()
     popd
 }
 
+get-init-scripts ()
+{
+    local shell=''
+    local init_scripts=''
+
+    case "$OSTYPE" in
+        linux-gnu)
+            shell=$(getent passwd $USER | awk -F/ '{ print $NF }')
+            ;;
+        darwin*)
+            shell=$(dscl . -read /Users/$USER UserShell | awk -F/ '{ print $NF }' )
+            ;;
+        *)
+            echo '${OSTYPE}: Unsupported operating system' >&2
+            return 1
+            ;;
+    esac
+
+    case "$shell" in
+        bash)
+            init_scripts=$(echo ~/.bashrc and ~/.bash_profile)
+            ;;
+        ksh)
+            init_scripts=$(echo ~/.ksh and ~/.profile)
+            ;;
+        zsh)
+            init_scripts=$(echo ~/.zshrc and ~/.zprofile)
+            ;;
+        *)
+            init_scripts=$(echo ~/.profile)
+            ;;
+    esac
+}
+
 clean-up ()
 {
     local -n params=$1
 
     $CAT_CMD <<EOF
 
-*** Please add the following to $(echo ~/.bashrc and ~/.bash_profile):
+*** Please add the following to $(get-init-scripts):
 
 ################################################################
-declare pico_basedir=${params[pico-basedir]}
+pico_basedir=${params[pico-basedir]}
 
 if test -d "\$pico_basedir"; then
     export PICO_BOARD=${params[pico-board],,} \\
@@ -315,6 +375,12 @@ if test -d "\$pico_basedir"; then
            PICO_PLAYGROUND_PATH=\${pico_basedir}/pico-playground
 fi
 ################################################################
+
+*** Then run:
+***
+***    source ~/.bashrc
+***
+*** before proceeding.
 EOF
 }
 
@@ -379,6 +445,7 @@ EOF
     build-examples examples_list cmake_parameters || exit $?
     install-tools tools_list || exit $?
     install-openocd || exit $?
+    install-openocd-udev-rules || exit $?
     build-micropython parameters || exit $?
     clean-up parameters || exit $?
 fi

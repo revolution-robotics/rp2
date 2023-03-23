@@ -10,11 +10,17 @@ bin_SCRIPTS = build-sdk-and-upy openocd-picoprobe ttypico ttyusb
 
 AM_DEFAULT_SOURCE_EXT = .in
 
-all:
+all: build-sdk-and-upy
 	@./build-sdk-and-upy $(PICO_BASEDIR) $(PICO_BOARD)
+
+build-sdk-and-upy: build-sdk-and-upy.in
+	./configure
 
 debug: openocd-picoprobe
 	openocd-picoprobe
+
+openocd-picoprobe: openocd-picoprobe.in
+	./configure
 
 flash: openocd-picoprobe
 	openocd-picoprobe -c "program $(PICO_IMAGE) verify reset exit"

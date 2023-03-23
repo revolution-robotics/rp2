@@ -58,6 +58,7 @@ AC_PATH_PROGS([SORT_CMD],    [gsort sort],       [], [$OPT_PREFIX$PATH])
 
 AC_PATH_PROG([SUDO_CMD],     [sudo],             [], [$OPT_PREFIX$PATH])
 AC_PATH_PROG([TR_CMD],       [tr],               [], [$OPT_PREFIX$PATH])
+AC_PATH_PROG([UDEVADM_CMD],  [udevadm],          [], [$OPT_PREFIX$PATH])
 
 
 # Checks for libraries.

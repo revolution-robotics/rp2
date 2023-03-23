@@ -6,7 +6,6 @@
 # serial device (typically a console) in screen. If no device number
 # is provided, a default device number is used.
 #
-: ${ED_CMD:='@ED_CMD@'}
 : ${GREP_CMD:='@GREP_CMD@'}
 : ${LS_CMD:='@LS_CMD@'}
 : ${PS_CMD:='@PS_CMD@'}
@@ -59,31 +58,34 @@ visual-ascii ()
 # get-screen-escape: Return escape character of screen program.
 get-screen-escape ()
 {
-    local screen_escape=$(
-        $ED_CMD -E -e '/^escape/s/.*\s+(\^.|\\[0-9]{1,3}).*/\1/p' ~/.screenrc || true
-          )
+    local screen_escape=C-a
 
-    case "$screen_escape" in
-        \?)
-            screen_escape=C-a
-            ;;
-        ^?)
-            local control_char=${screen_escape#^}
+    if test -f ~/.screenrc && grep -q ^escape ~/.screenrc; then
+        screen_escape=$(
+            $SED_CMD -E -ne '/^escape/s/.*\s+(\^.|\\[0-9]{1,3}).*/\1/p' ~/.screenrc || true
+                     )
 
-            control_char=${control_char:0:1}
-            screen_escape=C-${control_char,}
-            ;;
-        \\*)
-            if ! screen_escape=$(visual-ascii "$screen_escape"); then
+        local control_char=''
+
+        case "$screen_escape" in
+            ^?)
+                control_char=${screen_escape#^}
+
+                control_char=${control_char:0:1}
+                screen_escape=C-${control_char,}
+                ;;
+            \\*)
+                if ! screen_escape=$(visual-ascii "$screen_escape"); then
+                    echo "${FUNCNAME[0]}: ${screen_escape}: Invalid escape character" >&2
+                    return 1
+                fi
+                ;;
+            *)
                 echo "${FUNCNAME[0]}: ${screen_escape}: Invalid escape character" >&2
                 return 1
-            fi
-            ;;
-        *)
-            echo "${FUNCNAME[0]}: ${screen_escape}: Invalid escape character" >&2
-            return 1
-            ;;
-    esac
+                ;;
+        esac
+    fi
 
     echo "$screen_escape"
 }

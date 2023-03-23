@@ -11,18 +11,17 @@ for Raspberry Pi Pico development, producing:
 
 Caveats:
 
-- On Apple silicon, to install the GNU debugger requires Rosetta 2.
+- On Apple silicon, to install the GNU debugger (gdb) requires Rosetta 2.
 - On Fedora, a multi-architecture gdb is not available.
 
 In following figure, the Raspberry Pi Pico on the left acts as a debug
 probe/serial console for the Pico under development on the right. The
-Pico debug probe/serial console is connected via USB to a desktop
-system from which these scripts are run.
+Pico debug probe is connected via USB to a desktop/build system from
+which these scripts are run.
 
-| ![Raspberry Pi Pico Debug
-Probe](https://user-images.githubusercontent.com/418762/226142162-044a902f-0603-4857-870c-1cb7ce6d5d52.png) |
+| ![Raspberry Pi Pico Debug Probe](https://user-images.githubusercontent.com/418762/226142162-044a902f-0603-4857-870c-1cb7ce6d5d52.png) |
 |:--:|
-|** Image credit: Raspberry Pi **|
+| **Pico configured as debug probe** (Image credit: Raspberry Pi)|
 
 > NB: If the Pico under development is a USB host then, instead of
 > wiring VSYS to VSYS (Pico pin 39), wire VBUS to VBUS (Pico pin 40)
@@ -46,13 +45,13 @@ utilities are needed to generate the configure script:
 ## macOS Prerequisites
 
 In addition to Xcode, to be able to install the requisite software,
-including GNU autotools, GNU bash, libusb, etc., the build script
-assumes that [MacPorts](https://www.macports.org/install.php) is
-already installed. It is possible to use [Homebrew](https://brew.sh)
-instead, but the build script would need to be updated accordingly.
+the build script assumes that
+[MacPorts](https://www.macports.org/install.php) is already installed.
+It's possible to use [Homebrew](https://brew.sh) instead, but the
+build script would need to be updated accordingly.
 
 ```shell
-sudo port install  bash bash-completion autoconf automake libtool gmake
+sudo port install bash bash-completion autoconf automake libtool gmake
 export PATH=/usr/local/bin:$PATH
 ```
 
@@ -66,13 +65,17 @@ cd rp2
 ./autogen.sh
 ./configure
 make PICO_BOARD=pico PICO_BASEDIR=${PWD}/build
-sudo make install
 ```
-
-
 
 To build for Pico W, replace `PICO_BOARD=pico` above with
 `PICO_BOARD=pico_w`.
+
+Follow the Instructions for updating the shell initialization scripts
+printed at the end of `make` command.  Finally, run:
+
+```shell
+sudo make install
+```
 
 ## Install Picoprobe
 
@@ -86,15 +89,15 @@ short the debug probe pins 30 (RUN) and 28 (GND). A moment later,
 release **BOOTSEL**. Shorting the RUN pin to ground causes the Pico to
 reset and, with **BOOTSEL** pressed, boot into USB Mass Storage mode.
 
-If all went well, the Pico should be mounted on build system as a new
-folder, i.e., on
+If all went well, the Pico should be mounted on a
+folder of the build system, i.e., on
 
-- Ubuntu as _/media/${USER}/RPI-RP2_,
-- Fedora as _/run/media/${USER}/RPI-RP2_,
-- macOS as _/Volumes/RPI-RP2_.
+- Ubuntu as: _/media/${USER}/RPI-RP2_
+- Fedora as: _/run/media/${USER}/RPI-RP2_
+- macOS as: _/Volumes/RPI-RP2_
 
-Now Picoprobe can be installed to the Pico by copying the file _picoprobe.uf2_ to
-Pico's mount point. So, on
+Picoprobe can now be installed to the Pico by copying the file _picoprobe.uf2_ to
+Pico's mount point, i.e., on
 
 - Ubuntu, run:
 
@@ -136,3 +139,47 @@ Then open the REPL with:
 ```shell
 ttypico
 ```
+
+## Debug Pico
+
+To illustrate, debugging, start by flashing the blink application to
+the Pico:
+
+```shell
+make flash \
+    PICO_IMAGE=${PICO_BASEDIR}/pico-examples/build/blink.elf
+```
+
+Verify that the development Pico's LED is blinking, then start the
+debug server:
+
+```shell
+make debug
+```
+
+In another terminal, open the blink ELF image in GNU debugger:
+
+```shell
+gdb-multiarch ${PICO_BASEDIR}/pico-examples/build/blink/blink.elf
+```
+
+At the GNU debugger prompt, **(gdb)**, connect to the OpenOCD debug server:
+
+
+```gdb
+target remote localhost:3333
+```
+
+Set a breakpoint, restart the blink application and list or step
+through it:
+
+```gdb
+b main
+monitor reset init
+continue
+list
+step
+```
+
+After entering a command, hit the **Enter** key to repeat it. Use `quit`
+to exit the GNU debugger and **CTRL+C** to terminate the debug server.
