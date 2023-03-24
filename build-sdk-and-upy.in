@@ -22,26 +22,19 @@
 : ${MAKE_CMD:='@MAKE_CMD@'}
 : ${NPROC_CMD:='@NPROC_CMD@'}
 : ${PORT_CMD:='@PORT_CMD@'}
+: ${READLINK_CMD:='@READLINK_CMD@'}
 : ${SED_CMD:='@SED_CMD@'}
 : ${SUDO_CMD:='@SUDO_CMD@'}
 : ${UDEVADM_CMD:='@UDEVADM_CMD@'}
 
-install-libgpiod-tools ()
+# OS-agnstoic readlink for existent files/directories.
+resolve-existing ()
 {
-    local -n settings=$1
-
-    echo "*** Building GPIO library and tools" >&2
-    $INSTALL_CMD -d -m 0755 "${settings[pico-basedir]}" || return $?
-    $GIT_CMD -C "${settings[pico-basedir]}" clone "${settings[gpiod]}" || return $?
-
-    pushd "${settings[pico-basedir]}/libgpiod" || return $?
-    $AUTOUPDATE_CMD || return $?
-    $GIT_CMD commit -a --no-gpg-sign -m 'Run autoupdate.' || return $?
-    ./autogen.sh --enable-tools=yes || return $?
-    ./configure || return $?
-    $MAKE_CMD || return $?
-    $SUDO_CMD $MAKE_CMD install || return $?
-    popd
+    if $READLINK_CMD --version 2>&1 | $GREP_CMD -q 'coreutils'; then
+        $READLINK_CMD -e "$@"
+    else
+        $READLINK_CMD -f N "$@"
+    fi
 }
 
 install-prerequisites ()
@@ -70,62 +63,55 @@ install-prerequisites ()
     $SUDO_CMD $INSTALL_CMD -d -m 0755 -o "$($ID_CMD -un)" -g "$($ID_CMD -gn)" \
               "${params[pico-basedir]}" || return $?
 
-    case "$OSTYPE" in
-        linux-gnu)
-            source /etc/os-release
+    case "${params[id]}" in
+        debian|ubuntu)
+            sdk_deps+=(
+                g++
+                gcc
+                gcc-arm-none-eabi
+                libstdc++-arm-none-eabi-newlib
+            )
+            openocd_deps+=(
+                gdb-multiarch
+                gpiod
+                build-essential
+                libftdi-dev
+                libgpiod-dev
+                libusb-1.0-0-dev
+            )
+            micropython_deps+=(
+                libnewlib-arm-none-eabi
+            )
 
-            case "$ID" in
-                ubuntu|debian)
-                    sdk_deps+=(
-                        g++
-                        gcc
-                        gcc-arm-none-eabi
-                        libstdc++-arm-none-eabi-newlib
-                    )
-                    openocd_deps+=(
-                        gdb-multiarch
-                        gpiod
-                        build-essential
-                        libftdi-dev
-                        libgpiod-dev
-                        libusb-1.0-0-dev
-                    )
-                    micropython_deps+=(
-                        libnewlib-arm-none-eabi
-                    )
-
-                    $SUDO_CMD $APT_CMD update || return $?
-                    $SUDO_CMD $APT_CMD -y install "${git_deps[@]}" \
-                              "${sdk_deps[@]}" "${openocd_deps[@]}" "${tty_deps[@]}" \
-                        || return $?
-                    ;;
-                fedora)
-                    sdk_deps+=(
-                        arm-none-eabi-binutils-cs
-                        arm-none-eabi-gcc-cs
-                        arm-none-eabi-gcc-cs-c++
-                    )
-                    openocd_deps+=(
-                        autoconf-archive
-                        gdb
-                        libftdi-devel
-                        libusb1-devel
-                    )
-                    micropython_deps+=(
-                        arm-none-eabi-newlib
-                    )
-
-
-                    $SUDO_CMD $DNF_CMD -y group install \
-                              'C Development Tools and Libraries' || return $?
-                    $SUDO_CMD $DNF_CMD -y install "${git_deps[@]}" \
-                              "${sdk_deps[@]}" "${openocd_deps[@]}" \
-                              "${tty_deps[@]}" || return $?
-                    install-libgpiod-tools params
-                    ;;
-            esac
+            $SUDO_CMD $APT_CMD update || return $?
+            $SUDO_CMD $APT_CMD -y install "${git_deps[@]}" \
+                      "${sdk_deps[@]}" "${openocd_deps[@]}" "${tty_deps[@]}" \
+                || return $?
             ;;
-        darwin*)
+        fedora)
+            sdk_deps+=(
+                arm-none-eabi-binutils-cs
+                arm-none-eabi-gcc-cs
+                arm-none-eabi-gcc-cs-c++
+            )
+            openocd_deps+=(
+                autoconf-archive
+                gdb
+                libftdi-devel
+                libusb1-devel
+            )
+            micropython_deps+=(
+                arm-none-eabi-newlib
+            )
+
+
+            $SUDO_CMD $DNF_CMD -y group install \
+                      'C Development Tools and Libraries' || return $?
+            $SUDO_CMD $DNF_CMD -y install "${git_deps[@]}" \
+                      "${sdk_deps[@]}" "${openocd_deps[@]}" \
+                      "${tty_deps[@]}" || return $?
+            ;;
+        darwin)
             sdk_deps+=(
                 arm-none-eabi-gcc
                 gcc12
@@ -178,11 +164,17 @@ clone-repositories ()
 
         dest=${PICO_BASEDIR}/${repo}
 
+        if test ."$repo" = .'libgpiod' && test ."${params[id]}" != .'fedora'; then
+            continue
+        fi
+
         if [ -d "$dest" ]; then
-            echo "${dest}: Directory already exists" >&2
-            $GIT_CMD -C "$dest" pull || return $?
+            echo "${dest}: Directory exists; Updating" >&2
+            $GIT_CMD -C "$dest" pull --recurse-submodules || return $?
         else
             local repo_url=${params[$base_url]}/${repo}
+
+
 
             echo "*** Cloning ${repo_url} and any submodules" >&2
             $GIT_CMD -C "$PICO_BASEDIR" clone -b "$branch" \
@@ -196,6 +188,21 @@ clone-repositories ()
             fi
         fi
     done
+}
+
+install-libgpiod-tools ()
+{
+    local -n settings=$1
+
+    echo "*** Building GPIO library and tools" >&2
+    pushd "${settings[pico-basedir]}/libgpiod" || return $?
+    $AUTOUPDATE_CMD || return $?
+    $GIT_CMD commit -a --no-gpg-sign -m 'Run autoupdate.' || return $?
+    ./autogen.sh --enable-tools=yes || return $?
+    ./configure || return $?
+    $MAKE_CMD || return $?
+    $SUDO_CMD $MAKE_CMD install || return $?
+    popd
 }
 
 build-examples ()
@@ -324,7 +331,6 @@ build-micropython ()
 get-init-scripts ()
 {
     local shell=''
-    local init_scripts=''
 
     case "$OSTYPE" in
         linux-gnu)
@@ -341,16 +347,16 @@ get-init-scripts ()
 
     case "$shell" in
         bash)
-            init_scripts=$(echo ~/.bashrc and ~/.bash_profile)
+            echo ~/.bashrc and ~/.bash_profile
             ;;
         ksh)
-            init_scripts=$(echo ~/.ksh and ~/.profile)
+            echo ~/.ksh and ~/.profile
             ;;
         zsh)
-            init_scripts=$(echo ~/.zshrc and ~/.zprofile)
+            echo ~/.zshrc and ~/.zprofile
             ;;
         *)
-            init_scripts=$(echo ~/.profile)
+            echo ~/.profile
             ;;
     esac
 }
@@ -359,15 +365,23 @@ clean-up ()
 {
     local -n params=$1
 
+    local init_scripts=$(get-init-scripts)
+
     $CAT_CMD <<EOF
 
-*** Please add the following to $(get-init-scripts):
+*** Please add the code below to ${init_scripts},
+*** then run:
+***
+***    source ${init_scripts%% *}
+***
+*** before proceeding.
 
 ################################################################
 pico_basedir=${params[pico-basedir]}
 
 if test -d "\$pico_basedir"; then
-    export PICO_BOARD=${params[pico-board],,} \\
+    export RP2_TOPLEVEL=${script_dir} \\
+           PICO_BOARD=${params[pico-board],,} \\
            PICO_BASEDIR=\$pico_basedir \\
            PICO_SDK_PATH=\${pico_basedir}/pico-sdk \\
            PICO_EXAMPLES_PATH=\${pico_basedir}/pico-examples \\
@@ -376,27 +390,29 @@ if test -d "\$pico_basedir"; then
 fi
 ################################################################
 
-*** Then run:
-***
-***    source ~/.bashrc
-***
-*** before proceeding.
 EOF
 }
 
 if test ."$0" = ."${BASH_SOURCE[0]}"; then
-    declare script_name=${0##*/}
+    declare script=$(resolve-existing $0)
+    declare script_name=${script##*/}
+    declare script_dir=${script%/*}
 
     declare pico_basedir=${1:-"${PWD}/build"}
     declare pico_board=${2:-pico}
 
+    if test -f /etc/os-release; then
+        source /etc/os-release
+    fi
+
     declare -A parameters=(
         [rpi]=https://github.com/raspberrypi
         [mpy]=https://github.com/micropython
-        [gpiod]=https://git.kernel.org/pub/scm/libs/libgpiod/libgpiod.git
+        [libgpiod]=https://git.kernel.org/pub/scm/libs/libgpiod
         [default-branch]=develop
         [pico-board]=${pico_board^^}
         [pico-basedir]=$pico_basedir
+        [id]=${ID:-'darwin'}
     )
 
     # For a given repository, the default branch may be overriden by
@@ -410,6 +426,7 @@ if test ."$0" = ."${BASH_SOURCE[0]}"; then
         rpi.picotool
         rpi.openocd/rp2040
         mpy.micropython/master
+        libgpiod.libgpiod/master
     )
     declare -a cmake_parameters=(
         -DCMAKE_BUILD_TYPE=Debug
@@ -442,6 +459,11 @@ EOF
 
     install-prerequisites parameters || exit $?
     clone-repositories parameters repositories || exit $?
+
+    if test ."$ID" = .'fedora'; then
+        install-libgpiod-tools
+    fi
+
     build-examples examples_list cmake_parameters || exit $?
     install-tools tools_list || exit $?
     install-openocd || exit $?

@@ -2,8 +2,7 @@
 #
 # @(#)autogen.sh
 #
-# This script generates a GNU Autoconf configure script for the ed
-# line editor.
+# This script generates a GNU Autoconf configure script.
 #
 script_name=$(basename $0)
 

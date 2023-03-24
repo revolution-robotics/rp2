@@ -70,7 +70,7 @@ make PICO_BOARD=pico PICO_BASEDIR=${PWD}/build
 To build for Pico W, replace `PICO_BOARD=pico` above with
 `PICO_BOARD=pico_w`.
 
-Follow the Instructions for updating the shell initialization scripts
+Follow the instructions for updating the shell initialization scripts
 printed at the end of `make` command.  Finally, run:
 
 ```shell
@@ -128,10 +128,9 @@ After installing Picoprobe, OpenOCD can be used for flashing
 applications to the development system.  For instance, to flash
 MicroPython, run:
 
-
 ```shell
-make flash \
-    PICO_IMAGE=${PICO_BASEDIR}/micropython/ports/rp2/build-PICO/firmware.elf
+make -C "$RP2_TOPLEVEL" flash \
+    PICO_IMAGE="${PICO_BASEDIR}/micropython/ports/rp2/build-PICO/firmware.elf"
 ```
 
 Then open the REPL with:
@@ -146,21 +145,21 @@ To illustrate, debugging, start by flashing the blink application to
 the Pico:
 
 ```shell
-make flash \
-    PICO_IMAGE=${PICO_BASEDIR}/pico-examples/build/blink.elf
+make -C "$RP2_TOPLEVEL" flash \
+    PICO_IMAGE="${PICO_BASEDIR}/pico-examples/build/blink.elf"
 ```
 
 Verify that the development Pico's LED is blinking, then start the
 debug server:
 
 ```shell
-make debug
+make -C "$RP2_TOPLEVEL" debug
 ```
 
 In another terminal, open the blink ELF image in GNU debugger:
 
 ```shell
-gdb-multiarch ${PICO_BASEDIR}/pico-examples/build/blink/blink.elf
+gdb-multiarch "${PICO_BASEDIR}/pico-examples/build/blink/blink.elf"
 ```
 
 At the GNU debugger prompt, **(gdb)**, connect to the OpenOCD debug server:
@@ -174,7 +173,7 @@ Set a breakpoint, restart the blink application and list or step
 through it:
 
 ```gdb
-b main
+break main
 monitor reset init
 continue
 list

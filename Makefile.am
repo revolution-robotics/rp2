@@ -13,17 +13,16 @@ AM_DEFAULT_SOURCE_EXT = .in
 all: build-sdk-and-upy
 	@./build-sdk-and-upy $(PICO_BASEDIR) $(PICO_BOARD)
 
-build-sdk-and-upy: build-sdk-and-upy.in
-	./configure
+ttypico: ttyusb
+	ln -sf ttyusb ttypico
 
 debug: openocd-picoprobe
 	openocd-picoprobe
 
-openocd-picoprobe: openocd-picoprobe.in
-	./configure
-
 flash: openocd-picoprobe
 	openocd-picoprobe -c "program $(PICO_IMAGE) verify reset exit"
+
+install-exec-local: $(bin_SCRIPTS)
 
 clean-local:
 	rm -rf $(bin_SCRIPTS) $(PICO_BASEDIR)

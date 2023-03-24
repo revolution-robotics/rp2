@@ -27,38 +27,41 @@ AC_MSG_RESULT([${OPT_PREFIX:-no}])
 OPT_PREFIX=${OPT_PREFIX:+"${OPT_PREFIX}${PATH_SEPARATOR}"}
 
 # Checks for programs.
-AC_PATH_PROG([APT_CMD],      [apt])
-AC_PATH_PROG([AUTOUPDATE_CMD],      [autoupdate])
+AC_PATH_PROG([APT_CMD],        [apt])
+AC_PATH_PROG([AUTOUPDATE_CMD], [autoupdate])
 
-AC_PATH_PROGS([CAT_CMD],     [gcat cat],         [], [$OPT_PREFIX$PATH])
+AC_PATH_PROGS([CAT_CMD],       [gcat cat],           [], [$OPT_PREFIX$PATH])
 
-AC_PATH_PROG([CMAKE_CMD],    [cmake],            [], [$OPT_PREFIX$PATH])
-AC_PATH_PROG([DNF_CMD],      [dnf],              [], [$LOCAL_PREFIX$PATH])
-AC_PATH_PROG([ED_CMD],       [ed],               [], [$LOCAL_PREFIX$PATH])
-AC_PATH_PROG([GIT_CMD],      [git],              [], [$OPT_PREFIX$PATH])
+AC_PATH_PROG([CMAKE_CMD],      [cmake],              [], [$OPT_PREFIX$PATH])
+AC_PATH_PROG([DNF_CMD],        [dnf],                [], [$LOCAL_PREFIX$PATH])
+AC_PATH_PROG([ED_CMD],         [ed],                 [], [$LOCAL_PREFIX$PATH])
+AC_PATH_PROG([GIT_CMD],        [git],                [], [$OPT_PREFIX$PATH])
 
-AC_PATH_PROGS([GREP_CMD],    [ggrep grep],       [], [$OPT_PREFIX$PATH])
-AC_PATH_PROGS([ID_CMD],      [gid id],           [], [$OPT_PREFIX$PATH])
-AC_PATH_PROGS([INSTALL_CMD], [ginstall install], [], [$OPT_PREFIX$PATH])
-AC_PATH_PROGS([LN_CMD],      [gln ln],           [], [$OPT_PREFIX$PATH])
-AC_PATH_PROGS([LS_CMD],      [gls ls],           [], [$OPT_PREFIX$PATH])
+AC_PATH_PROGS([GREP_CMD],      [ggrep grep],         [], [$OPT_PREFIX$PATH])
+AC_PATH_PROGS([ID_CMD],        [gid id],             [], [$OPT_PREFIX$PATH])
+AC_PATH_PROGS([INSTALL_CMD],   [ginstall install],   [], [$OPT_PREFIX$PATH])
+AC_PATH_PROGS([LN_CMD],        [gln ln],             [], [$OPT_PREFIX$PATH])
+AC_PATH_PROGS([LS_CMD],        [gls ls],             [], [$OPT_PREFIX$PATH])
 
-AC_PATH_PROG([LSUSB_CMD],    [lsusb],            [], [$OPT_PREFIX$PATH])
+AC_PATH_PROG([LSUSB_CMD],      [lsusb],              [], [$OPT_PREFIX$PATH])
 
-AC_PATH_PROGS([MAKE_CMD],    [gmake make],       [], [$OPT_PREFIX$PATH])
+AC_PATH_PROGS([MAKE_CMD],      [gmake make],         [], [$OPT_PREFIX$PATH])
 
-AC_PATH_PROG([OPENOCD_CMD],  [openocd],          [], [$OPT_PREFIX$PATH])
-AC_PATH_PROG([PS_CMD],       [ps],               [], [$OPT_PREFIX$PATH])
-AC_PATH_PROG([NPROC_CMD],    [nproc],            [], [$OPT_PREFIX$PATH])
-AC_PATH_PROG([PORT_CMD],     [port],             [], [$OPT_PREFIX$PATH])
-AC_PATH_PROG([SCREEN_CMD],   [screen],           [], [$OPT_PREFIX$PATH])
+AC_PATH_PROG([OPENOCD_CMD],    [openocd],            [], [$OPT_PREFIX$PATH])
+AC_PATH_PROG([PS_CMD],         [ps],                 [], [$OPT_PREFIX$PATH])
+AC_PATH_PROG([NPROC_CMD],      [nproc],              [], [$OPT_PREFIX$PATH])
+AC_PATH_PROG([PORT_CMD],       [port],               [], [$OPT_PREFIX$PATH])
 
-AC_PATH_PROGS([SED_CMD],     [gsed sed],         [], [$OPT_PREFIX$PATH])
-AC_PATH_PROGS([SORT_CMD],    [gsort sort],       [], [$OPT_PREFIX$PATH])
+AC_PATH_PROGS([READLINK_CMD],  [greadlink readlink], [], [$OPT_PREFIX$PATH])
 
-AC_PATH_PROG([SUDO_CMD],     [sudo],             [], [$OPT_PREFIX$PATH])
-AC_PATH_PROG([TR_CMD],       [tr],               [], [$OPT_PREFIX$PATH])
-AC_PATH_PROG([UDEVADM_CMD],  [udevadm],          [], [$OPT_PREFIX$PATH])
+AC_PATH_PROG([SCREEN_CMD],     [screen],             [], [$OPT_PREFIX$PATH])
+
+AC_PATH_PROGS([SED_CMD],       [gsed sed],           [], [$OPT_PREFIX$PATH])
+AC_PATH_PROGS([SORT_CMD],      [gsort sort],         [], [$OPT_PREFIX$PATH])
+
+AC_PATH_PROG([SUDO_CMD],       [sudo],               [], [$OPT_PREFIX$PATH])
+AC_PATH_PROG([TR_CMD],         [tr],                 [], [$OPT_PREFIX$PATH])
+AC_PATH_PROG([UDEVADM_CMD],    [udevadm],            [], [$OPT_PREFIX$PATH])
 
 
 # Checks for libraries.
