@@ -192,10 +192,10 @@ clone-repositories ()
 
 install-libgpiod-tools ()
 {
-    local -n settings=$1
+    local -n params=$1
 
     echo "*** Building GPIO library and tools" >&2
-    pushd "${settings[pico-basedir]}/libgpiod" || return $?
+    pushd "${params[pico-basedir]}/libgpiod" || return $?
     $AUTOUPDATE_CMD || return $?
     $GIT_CMD commit -a --no-gpg-sign -m 'Run autoupdate.' || return $?
     ./autogen.sh --enable-tools=yes || return $?
@@ -461,7 +461,7 @@ EOF
     clone-repositories parameters repositories || exit $?
 
     if test ."$ID" = .'fedora'; then
-        install-libgpiod-tools
+        install-libgpiod-tools parameters
     fi
 
     build-examples examples_list cmake_parameters || exit $?
