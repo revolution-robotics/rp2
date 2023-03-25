@@ -24,7 +24,7 @@ debug-via-picoprobe ()
                     $TR_CMD A-Z a-z
                                ) || return $?
             ;;
-        darwin)
+        darwin*)
             picoprobe_interface=cmsis-dap
             ;;
     esac
