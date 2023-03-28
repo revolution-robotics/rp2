@@ -1,7 +1,7 @@
 # Raspberry Pi Pico (RP2) Development
 
-These scripts configure a macOS or Debian/Ubuntu system
-for Raspberry Pi Pico development, producing:
+These scripts configure a GNU/Linux or macOS system for Raspberry Pi
+Pico development, producing:
 
 - Raspberry Pi Pico C/C++ SDK
 - Raspberry Pi Pico Python SDK (MicroPython RP2 port)
@@ -11,8 +11,8 @@ for Raspberry Pi Pico development, producing:
 
 Caveats:
 
-- On Apple silicon, to install the GNU debugger (gdb) requires Rosetta 2.
-- On Fedora, a multi-architecture gdb is not available.
+- On Fedora, a multi-architecture GNU debugger (gdb) is not available.
+- On Apple silicon, gdb requires Rosetta 2.
 
 In following figure, the Raspberry Pi Pico on the left acts as a debug
 probe/serial console for the Pico under development on the right. The
@@ -41,6 +41,18 @@ utilities are needed to generate the configure script:
 - GNU autotools (i.e., autoconf, automake, libtool)
 - GNU make
 - GNU bash version 5+
+
+On Debian/Ubuntu, run:
+
+```shell
+sudo apt install -y autoconf automake libtool make
+```
+
+on Fedora, run:
+
+```shell
+sudo dnf install -y autoconf automake libtool make
+```
 
 ## macOS Prerequisites
 

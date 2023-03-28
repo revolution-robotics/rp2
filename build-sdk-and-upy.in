@@ -39,6 +39,21 @@ resolve-existing ()
     fi
 }
 
+initialize-git-config ()
+{
+    if ! $GIT_CMD config --global --get user.name >/dev/null; then
+        $GIT_CMD config --global user.name 'Raspberry Pi User'
+    fi
+
+    if ! $GIT_CMD config --global --get user.email >/dev/null; then
+        $GIT_CMD config --global user.email "${USER}@raspberry.org"
+    fi
+
+    if ! $GIT_CMD config --global --get pull.rebase >/dev/null; then
+        $GIT_CMD config --global  pull.rebase false
+    fi
+}
+
 count-installed-packages ()
 {
     local -n params=$1
@@ -485,6 +500,8 @@ EOF
     fi
     echo >&2
 
+    initialize-git-config
+
     if test ."$PREREQUISITES_INSTALLED" != .'true'; then
         declare -i pkgs_installed_before=0
         declare -i pkgs_installed_after=0
@@ -500,6 +517,7 @@ EOF
             exec env PREREQUISITES_INSTALLED=true "$0" "$@"
         fi
     fi
+
     clone-repositories parameters repositories || exit $?
 
     if test ."$ID" = .'fedora'; then
