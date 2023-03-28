@@ -100,7 +100,8 @@ if $verbose; then
      run:
 
              $ $top_srcdir/configure
-             $ make install
+             $ make
+             $ sudo make install
 
 ------------------------------------------------------------------------
 EOF

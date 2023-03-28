@@ -27,6 +27,8 @@
 : ${SUDO_CMD:='@SUDO_CMD@'}
 : ${UDEVADM_CMD:='@UDEVADM_CMD@'}
 
+: ${PREREQUISITES_INSTALLED:='false'}
+
 # OS-agnstoic readlink for existent files/directories.
 resolve-existing ()
 {
@@ -35,6 +37,30 @@ resolve-existing ()
     else
         $READLINK_CMD -f N "$@"
     fi
+}
+
+count-installed-packages ()
+{
+    local -n params=$1
+
+    case "${params[id]}" in
+        debian|ubuntu)
+            $SUDO_CMD $APT_CMD list --installed 2>/dev/null |
+                $GREP_CMD -c '\[installed\]'
+            ;;
+        fedora)
+            $SUDO_CMD $DNF list --recent |
+                $GREP_CMD -E -c '\s@[a-z]'
+            ;;
+        darwin*)
+            $SUDO_CMD $PORT_CMD installed active |
+                $GREP_CMD -c '(active)'
+            ;;
+        *)
+            echo "${script_name}: Unsupported platform" >&2
+            return 1
+            ;;
+    esac
 }
 
 install-prerequisites ()
@@ -444,20 +470,36 @@ if test ."$0" = ."${BASH_SOURCE[0]}"; then
     echo "Pico SDK base directory: ${pico_basedir}" >&2
     echo "Pico board: ${pico_board}" >&2
 
-    if (( $# >= 1 )); then
+    if test ."$PREREQUISITES_INSTALLED" = .'true'; then
+        : no prompt
+    elif (( $# >= 1 )); then
         read -n 1 -p 'Press any key to continue...'
     else
         cat >&2 <<EOF
 To override default base directory and/or board, use:
 
-    $0 desired-base-dir pico-board
+    ${script_name} desired-base-dir pico-board
 
 EOF
         read -n 1 -p 'Otherwise, press any key to continue...'
     fi
     echo >&2
 
-    install-prerequisites parameters || exit $?
+    if test ."$PREREQUISITES_INSTALLED" != .'true'; then
+        declare -i pkgs_installed_before=0
+        declare -i pkgs_installed_after=0
+
+        pkgs_installed_before=$(count-installed-packages parameters) || exit $?
+        install-prerequisites parameters || exit $?
+        pkgs_installed_after=$(count-installed-packages parameters) || exit $?
+        if (( pkgs_installed_before != pkgs_installed_after )); then
+            ${script_dir}/config.status --recheck
+            for config_file in build-sdk-and-upy; do
+                ${script_dir}/config.status "$config_file"
+            done
+            exec env PREREQUISITES_INSTALLED=true "$0" "$@"
+        fi
+    fi
     clone-repositories parameters repositories || exit $?
 
     if test ."$ID" = .'fedora'; then
