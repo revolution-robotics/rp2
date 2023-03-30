@@ -28,10 +28,15 @@ OPT_PREFIX=${OPT_PREFIX:+"${OPT_PREFIX}${PATH_SEPARATOR}"}
 
 # Checks for programs.
 AC_PATH_PROG([APT_CMD],        [apt])
-AC_PATH_PROG([AUTOUPDATE_CMD], [autoupdate])
+
+AC_PATH_PROGS([AWK_CMD],       [gawk awk],           [], [$OPT_PREFIX$PATH])
+
+AC_PATH_PROG([AUTOUPDATE_CMD], [autoupdate],         [], [$OPT_PREFIX$PATH])
 
 AC_PATH_PROGS([CAT_CMD],       [gcat cat],           [], [$OPT_PREFIX$PATH])
 
+AC_PATH_PROG([DSCL_CMD],       [dscl])
+AC_PATH_PROG([GETENT_CMD],     [getent])
 AC_PATH_PROG([CMAKE_CMD],      [cmake],              [], [$OPT_PREFIX$PATH])
 AC_PATH_PROG([DNF_CMD],        [dnf],                [], [$LOCAL_PREFIX$PATH])
 AC_PATH_PROG([ED_CMD],         [ed],                 [], [$LOCAL_PREFIX$PATH])
@@ -60,7 +65,9 @@ AC_PATH_PROGS([SED_CMD],       [gsed sed],           [], [$OPT_PREFIX$PATH])
 AC_PATH_PROGS([SORT_CMD],      [gsort sort],         [], [$OPT_PREFIX$PATH])
 
 AC_PATH_PROG([SUDO_CMD],       [sudo],               [], [$OPT_PREFIX$PATH])
-AC_PATH_PROG([TR_CMD],         [tr],                 [], [$OPT_PREFIX$PATH])
+
+AC_PATH_PROGS([TR_CMD],        [gtr tr],             [], [$OPT_PREFIX$PATH])
+
 AC_PATH_PROG([UDEVADM_CMD],    [udevadm],            [], [$OPT_PREFIX$PATH])
 
 
@@ -73,6 +80,7 @@ AC_PATH_PROG([UDEVADM_CMD],    [udevadm],            [], [$OPT_PREFIX$PATH])
 # Checks for library functions.
 
 AC_CONFIG_FILES([Makefile])
+AC_CONFIG_FILES([install-prerequisites], [chmod +x install-prerequisites])
 AC_CONFIG_FILES([build-sdk-and-upy], [chmod +x build-sdk-and-upy])
 AC_CONFIG_FILES([ttyusb], [chmod +x ttyusb; ln -sf ttyusb ttypico])
 AC_CONFIG_FILES([openocd-picoprobe], [chmod +x openocd-picoprobe])

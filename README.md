@@ -141,7 +141,7 @@ applications to the development system.  For instance, to flash
 MicroPython, run:
 
 ```shell
-make -C "$RP2_TOPLEVEL" flash \
+make -C "$PICO_BUILD_PATH" flash \
     PICO_IMAGE="${PICO_BASEDIR}/micropython/ports/rp2/build-PICO/firmware.elf"
 ```
 
@@ -157,7 +157,7 @@ To illustrate, debugging, start by flashing the blink application to
 the Pico:
 
 ```shell
-make -C "$RP2_TOPLEVEL" flash \
+make -C "$PICO_BUILD_PATH" flash \
     PICO_IMAGE="${PICO_BASEDIR}/pico-examples/build/blink.elf"
 ```
 
@@ -165,7 +165,7 @@ Verify that the development Pico's LED is blinking, then start the
 debug server:
 
 ```shell
-make -C "$RP2_TOPLEVEL" debug
+make -C "$PICO_BUILD_PATH" debug
 ```
 
 In another terminal, open the blink ELF image in GNU debugger:

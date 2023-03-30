@@ -1,0 +1,219 @@
+#!/usr/bin/env bash
+#
+# @(#) bootstrap
+#
+# This script installs prerequisites for Raspberry Pi Pico development.
+#
+: ${APT_CMD:='@APT_CMD@'}
+: ${AWK_CMD:='@AWK_CMD@'}
+: ${CAT_CMD:='@CAT_CMD@'}
+: ${DNF_CMD:='@DNF_CMD@'}
+: ${DSCL_CMD:='@DSCL_CMD@'}
+: ${GETENT_CMD:='@GETENT_CMD@'}
+: ${GREP_CMD:='@GREP_CMD@'}
+: ${INSTALL_CMD:='@INSTALL_CMD@'}
+: ${PORT_CMD:='@PORT_CMD@'}
+: ${READLINK_CMD:='@READLINK_CMD@'}
+: ${SUDO_CMD:='@SUDO_CMD@'}
+
+# OS-agnstoic readlink for existent files/directories.
+resolve-existing ()
+{
+    if $READLINK_CMD --version 2>&1 | $GREP_CMD -q 'coreutils'; then
+        $READLINK_CMD -e "$@"
+    else
+        $READLINK_CMD -f N "$@"
+    fi
+}
+
+install-sdk-prerequisites ()
+{
+    local -n params=$1
+
+    local -a git_deps=(
+        git
+        git-lfs
+    )
+    local -a sdk_deps=(
+        cmake
+    )
+    local -a openocd_deps=(
+        automake
+        autoconf
+        texinfo
+        libtool
+        usbutils
+    )
+    local tty_deps=(
+        screen
+    )
+
+    case "${params[id]}" in
+        debian|ubuntu)
+            sdk_deps+=(
+                g++
+                gcc
+                gcc-arm-none-eabi
+                libstdc++-arm-none-eabi-newlib
+            )
+            openocd_deps+=(
+                gdb-multiarch
+                gpiod
+                build-essential
+                libftdi-dev
+                libgpiod-dev
+                libusb-1.0-0-dev
+            )
+            micropython_deps+=(
+                libnewlib-arm-none-eabi
+            )
+
+            $SUDO_CMD $APT_CMD update || return $?
+            $SUDO_CMD $APT_CMD -y install "${git_deps[@]}" \
+                      "${sdk_deps[@]}" "${openocd_deps[@]}" "${tty_deps[@]}" \
+                || return $?
+            ;;
+        fedora)
+            sdk_deps+=(
+                arm-none-eabi-binutils-cs
+                arm-none-eabi-gcc-cs
+                arm-none-eabi-gcc-cs-c++
+            )
+            openocd_deps+=(
+                autoconf-archive
+                gdb
+                libftdi-devel
+                libusb1-devel
+            )
+            micropython_deps+=(
+                arm-none-eabi-newlib
+            )
+
+
+            $SUDO_CMD $DNF_CMD -y group install \
+                      'C Development Tools and Libraries' || return $?
+            $SUDO_CMD $DNF_CMD -y install "${git_deps[@]}" \
+                      "${sdk_deps[@]}" "${openocd_deps[@]}" \
+                      "${tty_deps[@]}" || return $?
+            ;;
+        darwin)
+            sdk_deps+=(
+                arm-none-eabi-gcc
+                gcc12
+            )
+            openocd_deps+=(
+                libftdi1
+                libusb
+            )
+            $SUDO_CMD $PORT_CMD -N install "${git_deps[@]}" "${sdk_deps[@]}" \
+                 "${openocd_deps[@]}" "${tty_deps[@]}" || return $?
+            ;;
+        *)
+            echo "${script_name}: Unsupported platform" >&2
+            return 1
+            ;;
+    esac
+}
+
+get-init-scripts ()
+{
+    local shell=''
+
+    case "$OSTYPE" in
+        linux-gnu)
+            shell=$(
+                $GETENT_CMD passwd $USER |
+                    $AWK_CMD -F/ '{ print $NF }'
+                 ) || return $?
+            ;;
+        darwin*)
+            shell=$(
+                $DSCL_CMD . -read /Users/$USER UserShell |
+                    $AWK_CMD -F/ '{ print $NF }'
+                 ) || return $?
+            ;;
+        *)
+            echo '${OSTYPE}: Unsupported operating system' >&2
+            return 1
+            ;;
+    esac
+
+    case "$shell" in
+        bash)
+            echo ~/.bashrc and ~/.bash_profile
+            ;;
+        ksh)
+            echo ~/.ksh and ~/.profile
+            ;;
+        zsh)
+            echo ~/.zshrc and ~/.zprofile
+            ;;
+        *)
+            echo ~/.profile
+            ;;
+    esac
+}
+
+save-sdk-env ()
+{
+    local -n params=$1
+
+    local init_scripts=''
+
+    init_scripts=$(get-init-scripts) || return $?
+
+    ${INSTALL_CMD} -d -m 0755 "${params[sdk-env]%/*}" || return $?
+    $CAT_CMD >${params[sdk-env]} <<EOF
+
+#%#%# Please add the code below to ${init_scripts},
+#%#%# then run:
+#%#%#
+#%#%#    source ${init_scripts%% *}
+#%#%#
+#%#%# before proceeding.
+
+#################################################################
+pico_basedir=${params[pico-basedir]}
+
+if test -d "\$pico_basedir"; then
+    export PICO_BUILD_PATH=${params[script-dir]} \\
+           PICO_BOARD=${params[pico-board],,} \\
+           PICO_BASEDIR=\$pico_basedir \\
+           PICO_SDK_PATH=\${pico_basedir}/pico-sdk \\
+           PICO_EXAMPLES_PATH=\${pico_basedir}/pico-examples \\
+           PICO_EXTRAS_PATH=\${pico_basedir}/pico-extras \\
+           PICO_PLAYGROUND_PATH=\${pico_basedir}/pico-playground
+fi
+#################################################################
+
+EOF
+}
+
+if test ."$0" = ."${BASH_SOURCE[0]}"; then
+    declare script=$(resolve-existing $0)
+    declare script_name=${script##*/}
+    declare script_dir=${script%/*}
+
+    declare pico_board=${1:-pico}
+    declare pico_basedir=${2:-"${script_dir}/board/${pico_board}"}
+    declare sdk_env=${3:-"${script_dir}/sdk-env.sh"}
+
+    if test -f /etc/os-release; then
+        source /etc/os-release
+    fi
+
+    declare -A parameters=(
+        [script-dir]=$script_dir
+        [pico-board]=$pico_board
+        [pico-basedir]=$pico_basedir
+        [id]=${ID:-'darwin'}
+        [sdk-env]=$sdk_env
+    )
+
+    if test ! -f "${parameters[sdk-env]}" \
+            || ! $GREP_CMD -q "PICO_BOARD=${pico_board}" "$sdk_env" \
+            || ! $GREP_CMD -q "PICO_BASEDIR=${pico_basedir}" "$sdk_env"; then
+        install-sdk-prerequisites parameters \
+            && save-sdk-env parameters
+    fi
+fi

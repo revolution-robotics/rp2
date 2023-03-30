@@ -27,8 +27,6 @@
 : ${SUDO_CMD:='@SUDO_CMD@'}
 : ${UDEVADM_CMD:='@UDEVADM_CMD@'}
 
-: ${PREREQUISITES_INSTALLED:='false'}
-
 # OS-agnstoic readlink for existent files/directories.
 resolve-existing ()
 {
@@ -54,130 +52,6 @@ initialize-git-config ()
     fi
 }
 
-count-installed-packages ()
-{
-    local -n params=$1
-
-    case "${params[id]}" in
-        debian|ubuntu)
-            $SUDO_CMD $APT_CMD list --installed 2>/dev/null |
-                $GREP_CMD -c '\[installed\]'
-            ;;
-        fedora)
-            $SUDO_CMD $DNF list --recent |
-                $GREP_CMD -E -c '\s@[a-z]'
-            ;;
-        darwin*)
-            $SUDO_CMD $PORT_CMD installed active |
-                $GREP_CMD -c '(active)'
-            ;;
-        *)
-            echo "${script_name}: Unsupported platform" >&2
-            return 1
-            ;;
-    esac
-}
-
-install-prerequisites ()
-{
-    local -n params=$1
-
-    local -a git_deps=(
-        git
-        git-lfs
-    )
-    local -a sdk_deps=(
-        cmake
-    )
-    local -a openocd_deps=(
-        automake
-        autoconf
-        texinfo
-        libtool
-        usbutils
-    )
-    local tty_deps=(
-        screen
-    )
-
-    echo "*** Installing prerequisites for Pico SDK and MicroPython" >&2
-    $SUDO_CMD $INSTALL_CMD -d -m 0755 -o "$($ID_CMD -un)" -g "$($ID_CMD -gn)" \
-              "${params[pico-basedir]}" || return $?
-
-    case "${params[id]}" in
-        debian|ubuntu)
-            sdk_deps+=(
-                g++
-                gcc
-                gcc-arm-none-eabi
-                libstdc++-arm-none-eabi-newlib
-            )
-            openocd_deps+=(
-                gdb-multiarch
-                gpiod
-                build-essential
-                libftdi-dev
-                libgpiod-dev
-                libusb-1.0-0-dev
-            )
-            micropython_deps+=(
-                libnewlib-arm-none-eabi
-            )
-
-            $SUDO_CMD $APT_CMD update || return $?
-            $SUDO_CMD $APT_CMD -y install "${git_deps[@]}" \
-                      "${sdk_deps[@]}" "${openocd_deps[@]}" "${tty_deps[@]}" \
-                || return $?
-            ;;
-        fedora)
-            sdk_deps+=(
-                arm-none-eabi-binutils-cs
-                arm-none-eabi-gcc-cs
-                arm-none-eabi-gcc-cs-c++
-            )
-            openocd_deps+=(
-                autoconf-archive
-                gdb
-                libftdi-devel
-                libusb1-devel
-            )
-            micropython_deps+=(
-                arm-none-eabi-newlib
-            )
-
-
-            $SUDO_CMD $DNF_CMD -y group install \
-                      'C Development Tools and Libraries' || return $?
-            $SUDO_CMD $DNF_CMD -y install "${git_deps[@]}" \
-                      "${sdk_deps[@]}" "${openocd_deps[@]}" \
-                      "${tty_deps[@]}" || return $?
-            ;;
-        darwin)
-            sdk_deps+=(
-                arm-none-eabi-gcc
-                gcc12
-            )
-            openocd_deps+=(
-                libftdi1
-                libusb
-            )
-            $SUDO_CMD $PORT_CMD -N install "${git_deps[@]}" "${sdk_deps[@]}" \
-                 "${openocd_deps[@]}" "${tty_deps[@]}" || return $?
-            ;;
-        *)
-            echo "${script_name}: Unsupported platform" >&2
-            return 1
-            ;;
-    esac
-
-    export PICO_BOARD=${params[pico-board],,} \
-           PICO_BASEDIR=${params[pico-basedir]} \
-           PICO_SDK_PATH=${params[pico-basedir]}/pico-sdk \
-           PICO_EXAMPLES_PATH=${params[pico-basedir]}/pico-examples \
-           PICO_EXTRAS_PATH=${params[pico-basedir]}/pico-extras \
-           PICO_PLAYGROUND_PATH=${params[pico-basedir]}/pico-playground
-}
-
 clone-repositories ()
 {
     local -n params=$1
@@ -187,6 +61,9 @@ clone-repositories ()
     local base_url=''
     local repo=''
     local dest=''
+
+    $SUDO_CMD $INSTALL_CMD -d -m 0755 -o "$($ID_CMD -un)" -g "$($ID_CMD -gn)" \
+              "${params[pico-basedir]}" || return $?
 
     for repo in "${repos[@]}"; do
         branch=${params[default-branch]}
@@ -314,10 +191,10 @@ install-openocd ()
 
 install-openocd-udev-rules ()
 {
-    local udev_rules=60-openocd.rules
+    local -n params=$1
 
     if test ! -x "$UDEVADM_CMD" \
-            || test -f "/etc/udev/rules.d/${udev_rules}"; then
+            || test -f "${params[udev-rules]}"; then
         return 0
     fi
 
@@ -369,78 +246,14 @@ build-micropython ()
     popd
 }
 
-get-init-scripts ()
-{
-    local shell=''
-
-    case "$OSTYPE" in
-        linux-gnu)
-            shell=$(getent passwd $USER | awk -F/ '{ print $NF }')
-            ;;
-        darwin*)
-            shell=$(dscl . -read /Users/$USER UserShell | awk -F/ '{ print $NF }' )
-            ;;
-        *)
-            echo '${OSTYPE}: Unsupported operating system' >&2
-            return 1
-            ;;
-    esac
-
-    case "$shell" in
-        bash)
-            echo ~/.bashrc and ~/.bash_profile
-            ;;
-        ksh)
-            echo ~/.ksh and ~/.profile
-            ;;
-        zsh)
-            echo ~/.zshrc and ~/.zprofile
-            ;;
-        *)
-            echo ~/.profile
-            ;;
-    esac
-}
-
-clean-up ()
-{
-    local -n params=$1
-
-    local init_scripts=$(get-init-scripts)
-
-    $CAT_CMD <<EOF
-
-*** Please add the code below to ${init_scripts},
-*** then run:
-***
-***    source ${init_scripts%% *}
-***
-*** before proceeding.
-
-################################################################
-pico_basedir=${params[pico-basedir]}
-
-if test -d "\$pico_basedir"; then
-    export RP2_TOPLEVEL=${script_dir} \\
-           PICO_BOARD=${params[pico-board],,} \\
-           PICO_BASEDIR=\$pico_basedir \\
-           PICO_SDK_PATH=\${pico_basedir}/pico-sdk \\
-           PICO_EXAMPLES_PATH=\${pico_basedir}/pico-examples \\
-           PICO_EXTRAS_PATH=\${pico_basedir}/pico-extras \\
-           PICO_PLAYGROUND_PATH=\${pico_basedir}/pico-playground
-fi
-################################################################
-
-EOF
-}
-
 if test ."$0" = ."${BASH_SOURCE[0]}"; then
     declare script=$(resolve-existing $0)
     declare script_name=${script##*/}
     declare script_dir=${script%/*}
 
-    declare pico_basedir=${1:-"${PWD}/build"}
-    declare pico_board=${2:-pico}
+    declare pico_board=${1:-'pico'}
+    declare pico_basedir=${2:-"${script_dir}/board/${pico_board}"}
+    declare sdk_env=${3:-"${pico_basedir}/sdk-env.sh"}
 
     if test -f /etc/os-release; then
         source /etc/os-release
@@ -454,6 +267,8 @@ if test ."$0" = ."${BASH_SOURCE[0]}"; then
         [pico-board]=${pico_board^^}
         [pico-basedir]=$pico_basedir
         [id]=${ID:-'darwin'}
+        [sdk-env]=$sdk_env
+        [udev-rules]=/etc/udev/rules.d/60-openocd.rules
     )
 
     # For a given repository, the default branch may be overriden by
@@ -482,52 +297,24 @@ if test ."$0" = ."${BASH_SOURCE[0]}"; then
         picotool
     )
 
-    echo "Pico SDK base directory: ${pico_basedir}" >&2
-    echo "Pico board: ${pico_board}" >&2
-
-    if test ."$PREREQUISITES_INSTALLED" = .'true'; then
-        : no prompt
-    elif (( $# >= 1 )); then
-        read -n 1 -p 'Press any key to continue...'
+    if test -f "${parameters[sdk-env]}"; then
+        source "${parameters[sdk-env]}"
     else
-        cat >&2 <<EOF
-To override default base directory and/or board, use:
-
-    ${script_name} desired-base-dir pico-board
-
-EOF
-        read -n 1 -p 'Otherwise, press any key to continue...'
+        echo "${script_name}: ${parameters[sdk-env]}: No such file or directory" >&2
+        echo "Please run: \`make bootstrap' first." >&2
+        exit 1
     fi
-    echo >&2
 
     initialize-git-config
-
-    if test ."$PREREQUISITES_INSTALLED" != .'true'; then
-        declare -i pkgs_installed_before=0
-        declare -i pkgs_installed_after=0
-
-        pkgs_installed_before=$(count-installed-packages parameters) || exit $?
-        install-prerequisites parameters || exit $?
-        pkgs_installed_after=$(count-installed-packages parameters) || exit $?
-        if (( pkgs_installed_before != pkgs_installed_after )); then
-            ${script_dir}/config.status --recheck
-            for config_file in build-sdk-and-upy; do
-                ${script_dir}/config.status "$config_file"
-            done
-            exec env PREREQUISITES_INSTALLED=true "$0" "$@"
-        fi
-    fi
-
     clone-repositories parameters repositories || exit $?
 
-    if test ."$ID" = .'fedora'; then
+    if test ."${parameters[id]}" = .'fedora'; then
         install-libgpiod-tools parameters
     fi
 
     build-examples examples_list cmake_parameters || exit $?
     install-tools tools_list || exit $?
     install-openocd || exit $?
-    install-openocd-udev-rules || exit $?
-    build-micropython parameters || exit $?
-    clean-up parameters || exit $?
+    install-openocd-udev-rules parameters || exit $?
+    build-micropython parameters
 fi

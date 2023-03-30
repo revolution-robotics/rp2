@@ -1,138 +1,110 @@
-#!/bin/sh
+#!/usr/bin/env bash
 #
 # @(#)autogen.sh
 #
 # This script generates a GNU Autoconf configure script.
 #
-script_name=$(basename $0)
+#
+# OS-agnstoic readlink for existent files/directories.
+resolve-existing ()
+{
+    if readlink --version 2>&1 | grep -q 'coreutils'; then
+        readlink -e "$@"
+    else
+        readlink -f N "$@"
+    fi
+}
 
-case "$1" in
-    -h*|--h*)
-        echo "Usage: $script_name [-h|--help] [-s|--silent]"
-        exit
-        ;;
-esac
+check-prerequisites ()
+{
+    local cmd=''
+    local cmd_path=''
 
-verbose='true'
-case "$1" in
-    -s*|--s*)
-        verbose='false'
-        shift
-        ;;
-esac
-
-srcdir=$(dirname $0)
-abs_srcdir="$(cd "$srcdir" && pwd)"
-if [ ! -w "$abs_srcdir" ]; then
-    echo "$script_name: $abs_srcdir: Permission denied"
-    exit 2
-fi
-
-aclocal_cmd=$(which aclocal 2>/dev/null)
-exit_status=$?
-if test $exit_status -ne 0; then
-    cat <<EOF
-$script_name: aclocal: File not found
-Please verify installation of GNU Autoconf, Automake, and Libtool
-before running this script.
+    for cmd in aclocal automake autoreconf; do
+        if ! cmd_path=$(command -v "$cmd" 2>/dev/null); then
+            cat >&2 <<EOF
+${script_name}: ${cmd}: Command not found
+Before running this script, please verify that \$PATH includes
+GNU Autoconf, Automake, and Libtool commands.
 EOF
-    exit $exit_status
-fi
+            return 1
+        fi
+    done
 
-automake_cmd=$(which automake 2>/dev/null)
-exit_status=$?
-if test $exit_status -ne 0; then
-    cat <<EOF
-$script_name: automake: File not found
-Please verify installation of GNU Autoconf, Automake, Gettext and
-Libtool before running this script.
+    local -i major_ver=0
+
+    major_ver=$(
+        bash --version |
+            sed -n -e '/^.*bash, version \(.\).*/s//\1/p'
+          ) || return $?
+
+    if (( major_ver < 5 )); then
+        cat >&2 <<EOF
+${script_name}: bash: Version too old
+Before running this script, please verify that \$PATH includes a
+current version of GNU Bash which occurs before others.
 EOF
-    exit $exit_status
-fi
+        return 2
+    fi
+}
 
-autoreconf_cmd=$(which autoreconf 2>/dev/null)
-exit_status=$?
-if test $exit_status -ne 0; then
-    cat <<EOF
-$script_name: autoreconf: File not found
-Please verify installation of GNU Autoconf, Automake, Gettext and
-Libtool before running this script.
-EOF
-    exit $exit_status
-fi
+run-command ()
+{
+    local cmd=$1
 
-$verbose && cat <<EOF
-$script_name: Running:
-  cd "$abs_srcdir" &&
-  aclocal --warnings=gnu >&2
-
+    $verbose && cat <<EOF
+${script_name}: Running:
+    pushd "$script_dir" && $cmd
 EOF
 
-aclocal_output=$(
-    cd "$abs_srcdir" &&
-        aclocal --warnings=gnu 2>&1
-               )
-exit_status=$?
-if test $exit_status -ne 0; then
-    cat <<EOF
+    local -i exit_status=0
+    local cmd_output=''
+
+    if ! cmd_output=$(pushd "$script_dir" && $cmd 2>&1); then
+        printf "%s\n" "${script_name}:" "$cmd_output"
+        return 3
+    fi
+}
+
+if test ."$0" = ."${BASH_SOURCE[0]}"; then
+    declare script=$(resolve-existing "$0")
+    declare script_name=${script##*/}
+    declare script_dir=${script%/*}
+
+    declare -a command_list=(
+        'aclocal --warnings=gnu'
+        'automake --verbose --add-missing'
+        'autoreconf --verbose --install'
+    )
+
+    verbose='true'
+    case "$1" in
+        -h*|--h*)
+            echo "Usage: $script_name [-h|--help] [-s|--silent]"
+            exit
+            ;;
+        -s*|--s*)
+            verbose='false'
+            shift
+            ;;
+    esac
+
+    check-prerequisites || exit $?
+    for cmd in "${command_list[@]}"; do
+        run-command "$cmd" || exit $?
+    done
+
+    $verbose && cat >&2 <<EOF
 $script_name:
-$aclocal_output
-EOF
-    exit $exit_status
-fi
-
-$verbose && cat <<EOF
-$script_name: Running:
-  cd "$abs_srcdir" &&
-  automake --verbose --add-missing --copy >&2
-
-EOF
-
-automake_output=$(
-    cd "$abs_srcdir" &&
-        automake --verbose --add-missing --copy 2>&1
-               )
-exit_status=$?
-if test $exit_status -ne 0; then
-    cat <<EOF
-$script_name:
-$automake_output
-EOF
-    exit $exit_status
-fi
-
-$verbose && cat <<EOF
-$script_name: Running:
-  cd "$abs_srcdir" &&
-  autoreconf --verbose --install -I ./m4 >&2
-
-EOF
-
-autoconf_output=$(
-    cd "$abs_srcdir" &&
-        autoreconf --verbose --install -I ./m4 2>&1
-               )
-exit_status=$?
-if test $exit_status -ne 0; then
-    cat <<EOF
-$script_name:
-$autoconf_output
-EOF
-    exit $exit_status
-fi
-
-if $verbose; then
-    echo "$script_name:" >&2
-    cat >&2 <<'EOF'
 ========================================================================
 
      Automake and autoreconf appear to have completed successfully.
      To continue, optionally create and cd to a build directory, then
      run:
 
-             $ $top_srcdir/configure
-             $ make
-             $ sudo make install
+             \$ \$top_srcdir/configure
+             \$ make PICO_BOARD=pico PICO_BASEDIR=/path/to/pico-sdk
+             \$ sudo make install
 
 ------------------------------------------------------------------------
 EOF
