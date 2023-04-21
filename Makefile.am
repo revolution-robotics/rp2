@@ -9,7 +9,7 @@ PICO_BASEDIR ?= $(BUILD_DIR)board/$(PICO_BOARD)
 PICO_IMAGE   ?= $(PICO_BASEDIR)/pico-examples/build/blink/blink.elf
 PICO_SDK_ENV ?= $(PICO_BASEDIR)/sdk-env.sh
 
-bin_SCRIPTS = bootstrap build-sdk-and-upy openocd-picoprobe ttypico ttyusb
+bin_SCRIPTS = build-sdk-and-upy install-prerequisites openocd-picoprobe ttypico ttyusb
 
 AM_DEFAULT_SOURCE_EXT = .in
 
